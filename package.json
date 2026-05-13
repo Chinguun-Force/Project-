@@ -1,5 +1,6 @@
 {
   "name": "nomad-go-monorepo",
+  "type": "module",
   "private": true,
   "version": "1.0.0",
   "workspaces": [
