@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@nomad-go/shared-ui": ["libs/shared-ui/src/index.ts"],
+      "@nomad-go/shared-configs": ["libs/shared-configs/src/index.ts"]
+    }
+  }
+}

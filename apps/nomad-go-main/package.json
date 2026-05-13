@@ -1,0 +1,29 @@
+{
+  "name": "@nomad-go/main",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:seed": "prisma db seed"
+  },
+  "dependencies": {
+    "@nomad-go/gamification-xp": "0.1.0",
+    "@nomad-go/shared-ui": "0.1.0",
+    "@prisma/client": "^6.19.3",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.3"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "nx": {
+    "tags": ["type:app", "scope:nomad-go"]
+  }
+}

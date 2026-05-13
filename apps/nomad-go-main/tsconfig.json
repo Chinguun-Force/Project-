@@ -18,8 +18,9 @@
         "name": "next"
       }
     ],
-    "paths": {
-      "@/*": ["./src/*"]
+    "paths": {"@/*": ["./src/*"],
+      "@nomad-go/shared-ui": ["../../libs/shared-ui/src/index.ts"],
+      "@nomad-go/shared-configs": ["../../libs/shared-configs/src/index.ts"]
     }
   },
   "include": [

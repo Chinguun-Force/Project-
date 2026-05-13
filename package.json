@@ -1,35 +1,54 @@
 {
-  "name": "project-alpha",
-  "version": "0.1.0",
+  "name": "nomad-go-monorepo",
   "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "libs/*"
+  ],
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
-    "db:generate": "prisma generate",
-    "db:push": "prisma db push",
-    "db:seed": "prisma db seed"
+    "nx": "nx",
+    "graph": "nx graph",
+    "dev": "nx run-many -t dev --all --parallel=3",
+    "build": "nx run-many -t build --all",
+    "lint": "nx run-many -t lint --all",
+    "dev:main": "nx run @nomad-go/main:dev",
+    "dev:v2": "nx run @nomad-go/v2:dev",
+    "dev:pwa": "nx run @nomad-go/pwa:dev",
+    "build:main": "nx run @nomad-go/main:build",
+    "build:v2": "nx run @nomad-go/v2:build",
+    "build:pwa": "nx run @nomad-go/pwa:build"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.3",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.562.0",
     "next": "16.2.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "zustand": "^5.0.3"
+    "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@nx/docker": "22.7.1",
+    "@nx/eslint": "22.7.1",
+    "@nx/js": "^22.7.1",
+    "@nx/next": "22.7.1",
+    "@nx/vite": "22.7.1",
+    "@nx/vitest": "22.7.1",
+    "@nx/web": "22.7.1",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
+    "@types/node": "^20.17.14",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitest/ui": "~4.1.0",
+    "cross-env": "^7.0.3",
+    "eslint": "^9.39.0",
     "eslint-config-next": "16.2.3",
-    "prisma": "^6.19.3",
+    "jiti": "2.4.2",
+    "nx": "22.7.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
-  },
-  "prisma": {
-    "seed": "node prisma/seed.js"
+    "typescript": "^5.9.3",
+    "vitest": "~4.1.0"
   }
 }
