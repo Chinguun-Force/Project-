@@ -1,4 +1,13 @@
-import type { CookieOptions } from "hono/utils/cookie";
+export type CookieOptions = {
+    domain?: string;
+    expires?: Date;
+    httpOnly?: boolean;
+    maxAge?: number;
+    path?: string;
+    priority?: 'Low' | 'Medium' | 'High';
+    sameSite?: 'Strict' | 'Lax' | 'None';
+    secure?: boolean;
+}
 
 function isLocalhost(headers: Headers): boolean {
   const host = headers.get("host") || "";

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
-import { useNavigate } from "react-router";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Shield,
@@ -35,7 +35,7 @@ const roleIcons: Record<string, typeof Crown> = {
 
 export default function Admin() {
   const { user } = useAuth();
-  const navigate = useNavigate();
+  const router = useRouter();
   const utils = trpc.useUtils();
 
   const { data: stats } = trpc.admin.stats.useQuery(undefined, {
@@ -71,7 +71,7 @@ export default function Admin() {
           <Shield className="w-16 h-16 text-[#322F36] mx-auto mb-4" />
           <p className="text-lg text-[#A0A0B0] mb-4">Admin access required</p>
           <Button
-            onClick={() => navigate("/")}
+            onClick={() => router.push("/")}
             className="bg-[#F4C64D] text-[#1A1D26]"
           >
             Go Home

@@ -1,6 +1,6 @@
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
-import { useNavigate } from "react-router";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Trophy,
@@ -30,7 +30,7 @@ const tourImages: Record<number, string> = {
 
 export default function TourPlansPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
+  const router = useRouter();
 
   const { data: publishedPlans, isLoading } =
     trpc.tourPlan.listPublished.useQuery();
@@ -55,7 +55,7 @@ export default function TourPlansPage() {
           </div>
           {isModerator && (
             <Button
-              onClick={() => navigate("/tours/create")}
+              onClick={() => router.push("/tours/create")}
               className="bg-[#F4C64D] hover:bg-[#F4C64D]/90 text-[#1A1D26] font-semibold"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -116,7 +116,7 @@ export default function TourPlansPage() {
               <div
                 key={plan.id}
                 className="bg-[#322F36] rounded-xl border border-[#322F36] hover:border-[#F4C64D]/30 transition-all overflow-hidden group cursor-pointer"
-                onClick={() => navigate(`/tours/${plan.id}`)}
+                onClick={() => router.push(`/tours/${plan.id}`)}
               >
                 {/* Image Header */}
                 <div className="relative h-44 overflow-hidden">
@@ -189,7 +189,7 @@ export default function TourPlansPage() {
             </p>
             {isModerator && (
               <Button
-                onClick={() => navigate("/tours/create")}
+                onClick={() => router.push("/tours/create")}
                 variant="outline"
                 className="mt-4 border-[#F4C64D] text-[#F4C64D] hover:bg-[#F4C64D]/10"
               >

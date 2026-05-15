@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
-import { useNavigate } from "react-router";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 export default function Missions() {
-  const navigate = useNavigate();
+  const router = useRouter();
   const { data: missions, isLoading } = trpc.mission.list.useQuery();
   const [search, setSearch] = useState("");
   const [nearbyMode, setNearbyMode] = useState(false);
@@ -129,7 +129,7 @@ export default function Missions() {
               <div
                 key={mission.id}
                 className="bg-[#322F36] rounded-xl border border-[#322F36] hover:border-[#F4C64D]/30 transition-all overflow-hidden group cursor-pointer"
-                onClick={() => navigate(`/missions/${mission.id}`)}
+                onClick={() => router.push(`/missions/${mission.id}`)}
               >
                 <div className="relative h-40 overflow-hidden">
                   <img

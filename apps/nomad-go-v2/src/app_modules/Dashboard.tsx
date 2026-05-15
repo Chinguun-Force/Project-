@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router";
+import { useRouter } from "next/navigation";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import Globe from "@/components/Globe";
@@ -20,7 +20,7 @@ import {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const navigate = useNavigate();
+  const router = useRouter();
   const utils = trpc.useUtils();
 
   const { data: progress } = trpc.progress.me.useQuery(undefined, {
@@ -98,7 +98,7 @@ export default function Dashboard() {
             Your adventure across Mongolia begins here.
           </p>
           <Button
-            onClick={() => navigate("/login")}
+            onClick={() => router.push("/login")}
             className="bg-[#F4C64D] hover:bg-[#F4C64D]/90 text-[#1A1D26] font-semibold px-8 py-3"
           >
             Begin Your Journey
@@ -218,7 +218,7 @@ export default function Dashboard() {
         {/* Quick Actions */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
           <button
-            onClick={() => navigate("/quests")}
+            onClick={() => router.push("/quests")}
             className="bg-[#322F36]/80 backdrop-blur-sm rounded-xl p-4 border border-[#322F36] hover:border-[#F4C64D]/40 transition-all group text-left"
           >
             <MapPin className="w-6 h-6 text-[#A8C69F] mb-2 group-hover:scale-110 transition-transform" />
@@ -226,7 +226,7 @@ export default function Dashboard() {
             <p className="text-xs text-[#A0A0B0]">{quests?.length ?? 0} available</p>
           </button>
           <button
-            onClick={() => navigate("/missions")}
+            onClick={() => router.push("/missions")}
             className="bg-[#322F36]/80 backdrop-blur-sm rounded-xl p-4 border border-[#322F36] hover:border-[#F4C64D]/40 transition-all group text-left"
           >
             <Route className="w-6 h-6 text-[#F2994A] mb-2 group-hover:scale-110 transition-transform" />
@@ -234,7 +234,7 @@ export default function Dashboard() {
             <p className="text-xs text-[#A0A0B0]">Explore locations</p>
           </button>
           <button
-            onClick={() => navigate("/tours")}
+            onClick={() => router.push("/tours")}
             className="bg-[#322F36]/80 backdrop-blur-sm rounded-xl p-4 border border-[#322F36] hover:border-[#F4C64D]/40 transition-all group text-left"
           >
             <TrendingUp className="w-6 h-6 text-[#F4C64D] mb-2 group-hover:scale-110 transition-transform" />
@@ -262,7 +262,7 @@ export default function Dashboard() {
             </h2>
             <Button
               variant="ghost"
-              onClick={() => navigate("/quests")}
+              onClick={() => router.push("/quests")}
               className="text-[#F4C64D] hover:text-[#F4C64D]/80 hover:bg-[#F4C64D]/10 text-sm"
             >
               View All

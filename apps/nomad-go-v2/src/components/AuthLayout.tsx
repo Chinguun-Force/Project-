@@ -23,7 +23,7 @@ import { LOGIN_PATH } from "@/const";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { LayoutDashboard, LogOut, PanelLeft, Users } from "lucide-react";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { usePathname, useRouter } from "next/navigation";
 import { AuthLayoutSkeleton } from "./AuthLayoutSkeleton";
 import { Button } from "./ui/button";
 
@@ -42,10 +42,14 @@ export default function AuthLayout({
 }: {
   children: ReactNode;
 }) {
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH);
+
+  useEffect(() => {
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
-    return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
-  });
+    if (saved) {
+      setSidebarWidth(parseInt(saved, 10));
+    }
+  }, []);
   const { isLoading, user } = useAuth();
 
   useEffect(() => {
@@ -108,13 +112,13 @@ function AuthLayoutContent({
   setSidebarWidth,
 }: AuthLayoutContentProps) {
   const { user, logout } = useAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
+  const pathname = usePathname();
+  const router = useRouter();
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(item => item.path === location.pathname);
+  const activeMenuItem = menuItems.find(item => item.path === pathname);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -183,12 +187,12 @@ function AuthLayoutContent({
           <SidebarContent className="gap-0">
             <SidebarMenu className="px-2 py-1">
               {menuItems.map(item => {
-                const isActive = location.pathname === item.path;
+                const isActive = pathname === item.path;
                 return (
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
                       isActive={isActive}
-                      onClick={() => navigate(item.path)}
+                      onClick={() => router.push(item.path)}
                       tooltip={item.label}
                       className={`h-10 transition-all font-normal`}
                     >

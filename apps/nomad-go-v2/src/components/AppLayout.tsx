@@ -1,5 +1,5 @@
 import { useAuth } from "@/hooks/useAuth";
-import { useLocation, useNavigate } from "react-router";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Compass,
   MapPin,
@@ -30,8 +30,8 @@ const navItems = [
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
+  const pathname = usePathname();
+  const router = useRouter();
 
   const isAdmin = user?.role === "admin";
 
@@ -43,7 +43,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           {/* Logo */}
           <div
             className="flex items-center gap-2 cursor-pointer"
-            onClick={() => navigate("/")}
+            onClick={() => router.push("/")}
           >
             <Compass className="w-7 h-7 text-[#F4C64D]" />
             <span className="text-xl font-bold tracking-tight">
@@ -55,12 +55,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           {/* Desktop Nav */}
           <nav className="hidden md:flex items-center gap-1">
             {navItems.map((item) => {
-              const isActive = location.pathname === item.path;
+              const isActive = pathname === item.path;
               return (
                 <Button
                   key={item.path}
                   variant="ghost"
-                  onClick={() => navigate(item.path)}
+                  onClick={() => router.push(item.path)}
                   className={`flex items-center gap-2 transition-all ${
                     isActive
                       ? "text-[#F4C64D] bg-[#F4C64D]/10"
@@ -75,9 +75,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             {isAdmin && (
               <Button
                 variant="ghost"
-                onClick={() => navigate("/admin")}
+                onClick={() => router.push("/admin")}
                 className={`flex items-center gap-2 transition-all ${
-                  location.pathname === "/admin"
+                  pathname === "/admin"
                     ? "text-[#F4C64D] bg-[#F4C64D]/10"
                     : "text-[#A0A0B0] hover:text-white hover:bg-[#322F36]/50"
                 }`}
@@ -120,14 +120,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   </div>
                   <DropdownMenuSeparator className="bg-[#1A1D26]" />
                   <DropdownMenuItem
-                    onClick={() => navigate("/profile")}
+                    onClick={() => router.push("/profile")}
                     className="cursor-pointer hover:bg-[#1A1D26] focus:bg-[#1A1D26]"
                   >
                     <User className="w-4 h-4 mr-2" />
                     Profile
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() => navigate("/settings")}
+                    onClick={() => router.push("/settings")}
                     className="cursor-pointer hover:bg-[#1A1D26] focus:bg-[#1A1D26]"
                   >
                     <Settings className="w-4 h-4 mr-2" />
@@ -135,7 +135,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   </DropdownMenuItem>
                   {isAdmin && (
                     <DropdownMenuItem
-                      onClick={() => navigate("/admin")}
+                      onClick={() => router.push("/admin")}
                       className="cursor-pointer hover:bg-[#1A1D26] focus:bg-[#1A1D26]"
                     >
                       <Shield className="w-4 h-4 mr-2" />
@@ -154,7 +154,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               </DropdownMenu>
             ) : (
               <Button
-                onClick={() => navigate("/login")}
+                onClick={() => router.push("/login")}
                 className="bg-[#F4C64D] hover:bg-[#F4C64D]/90 text-[#1A1D26] font-semibold"
               >
                 Login
@@ -171,11 +171,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <nav className="md:hidden sticky bottom-0 z-50 bg-[#1A1D26]/95 backdrop-blur-md border-t border-[#322F36]/50">
         <div className="flex items-center justify-around py-2">
           {navItems.map((item) => {
-            const isActive = location.pathname === item.path;
+            const isActive = pathname === item.path;
             return (
               <button
                 key={item.path}
-                onClick={() => navigate(item.path)}
+                onClick={() => router.push(item.path)}
                 className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg transition-all ${
                   isActive
                     ? "text-[#F4C64D]"
@@ -189,9 +189,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           })}
           {isAdmin && (
             <button
-              onClick={() => navigate("/admin")}
+              onClick={() => router.push("/admin")}
               className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg transition-all ${
-                location.pathname === "/admin"
+                pathname === "/admin"
                   ? "text-[#F4C64D]"
                   : "text-[#A0A0B0] hover:text-white"
               }`}

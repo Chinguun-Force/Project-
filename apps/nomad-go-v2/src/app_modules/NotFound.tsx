@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Link } from "react-router";
+import Link from "next/link";
 
 export default function NotFound() {
   return (
@@ -12,7 +12,7 @@ export default function NotFound() {
         <CardContent className="space-y-4">
           <p className="text-muted-foreground">Page not found</p>
           <Button asChild className="w-full">
-            <Link to="/">Back to Home</Link>
+            <Link href="/">Back to Home</Link>
           </Button>
         </CardContent>
       </Card>
