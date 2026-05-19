@@ -144,7 +144,7 @@ export default function Dashboard() {
               <div className="flex items-center gap-4 mb-4">
                 <div className="relative">
                   <img
-                    src={user.avatar ?? "/rank-nomad.png"}
+                    src={(user.user_metadata?.avatar_url as string) ?? "/rank-nomad.png"}
                     alt="avatar"
                     className="w-16 h-16 rounded-full border-2 border-[#F4C64D]/40 object-cover"
                   />
@@ -156,7 +156,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold text-white">
-                    {user.name ?? "Nomad"}
+                    {(user.user_metadata?.playerName || user.user_metadata?.full_name || user.email?.split('@')[0]) ?? "Nomad"}
                   </h1>
                   <div className="flex items-center gap-2">
                     <span

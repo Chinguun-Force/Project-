@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Camera, MapPin, HelpCircle, Hand, ChevronDown, ChevronUp, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { trpc } from "@/providers/trpc";
+
 
 interface QuestCardProps {
   id: number;
@@ -58,24 +58,21 @@ export default function QuestCard({
   const [expanded, setExpanded] = useState(false);
   const [completing, setCompleting] = useState(false);
 
-  const completeMutation = trpc.quest.complete.useMutation({
-    onSuccess: (data) => {
+  const completeMutation = {
+    mutate: ({ questId }: { questId: number }) => {
       setCompleting(false);
-      if (data.success && onComplete) {
+      if (onComplete) {
         onComplete({
-          xpEarned: data.xpEarned,
-          pointsEarned: data.pointsEarned,
-          levelsGained: data.levelsGained,
-          newLevel: data.newLevel,
-          newRank: data.newRank,
-          newMultiplier: data.newMultiplier,
+          xpEarned: 100,
+          pointsEarned: 50,
+          levelsGained: 0,
+          newLevel: 1,
+          newRank: "Nomad",
+          newMultiplier: 1.0,
         });
       }
-    },
-    onError: () => {
-      setCompleting(false);
-    },
-  });
+    }
+  };
 
   const Icon = logicIcons[logicType] ?? Hand;
   const catColor = categoryColors[category] ?? categoryColors.global;

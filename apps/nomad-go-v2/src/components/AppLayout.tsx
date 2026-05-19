@@ -1,10 +1,11 @@
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/context/AuthContext";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Compass,
   MapPin,
   Route,
   Trophy,
+  Map,
   User,
   Settings,
   LogOut,
@@ -26,6 +27,7 @@ const navItems = [
   { path: "/quests", label: "Quests", icon: MapPin },
   { path: "/missions", label: "Missions", icon: Route },
   { path: "/tours", label: "Tours", icon: Trophy },
+  { path: "/map", label: "Map", icon: Map },
 ];
 
 export default function AppLayout({ children }: { children: ReactNode }) {
@@ -33,7 +35,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.user_metadata?.role === "admin" || false;
+  const displayName = user?.user_metadata?.playerName || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Nomad";
+  const avatarUrl = user?.user_metadata?.avatar_url;
 
   return (
     <div className="min-h-screen bg-[#1A1D26] text-white flex flex-col">
@@ -61,11 +65,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   key={item.path}
                   variant="ghost"
                   onClick={() => router.push(item.path)}
-                  className={`flex items-center gap-2 transition-all ${
-                    isActive
+                  className={`flex items-center gap-2 transition-all ${isActive
                       ? "text-[#F4C64D] bg-[#F4C64D]/10"
                       : "text-[#A0A0B0] hover:text-white hover:bg-[#322F36]/50"
-                  }`}
+                    }`}
                 >
                   <item.icon className="w-4 h-4" />
                   <span className="text-sm font-medium">{item.label}</span>
@@ -76,11 +79,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <Button
                 variant="ghost"
                 onClick={() => router.push("/admin")}
-                className={`flex items-center gap-2 transition-all ${
-                  pathname === "/admin"
+                className={`flex items-center gap-2 transition-all ${pathname === "/admin"
                     ? "text-[#F4C64D] bg-[#F4C64D]/10"
                     : "text-[#A0A0B0] hover:text-white hover:bg-[#322F36]/50"
-                }`}
+                  }`}
               >
                 <Shield className="w-4 h-4" />
                 <span className="text-sm font-medium">Admin</span>
@@ -98,13 +100,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     className="flex items-center gap-2 hover:bg-[#322F36]/50"
                   >
                     <Avatar className="w-8 h-8 border-2 border-[#F4C64D]/30">
-                      <AvatarImage src={user.avatar ?? undefined} />
+                      <AvatarImage src={avatarUrl} />
                       <AvatarFallback className="bg-[#322F36] text-[#F4C64D] text-xs">
-                        {user.name?.charAt(0) ?? "N"}
+                        {displayName.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <span className="hidden sm:block text-sm text-white">
-                      {user.name ?? "Nomad"}
+                      {displayName}
                     </span>
                   </Button>
                 </DropdownMenuTrigger>
@@ -113,9 +115,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   className="w-56 bg-[#322F36] border-[#322F36] text-white"
                 >
                   <div className="px-3 py-2">
-                    <p className="text-sm font-medium">{user.name ?? "Nomad"}</p>
+                    <p className="text-sm font-medium">{displayName}</p>
                     <p className="text-xs text-[#A0A0B0]">
-                      {user.role?.charAt(0).toUpperCase() + user.role?.slice(1)}
+                      {user.user_metadata?.role ? (user.user_metadata.role as string).charAt(0).toUpperCase() + (user.user_metadata.role as string).slice(1) : "User"}
                     </p>
                   </div>
                   <DropdownMenuSeparator className="bg-[#1A1D26]" />
@@ -176,11 +178,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <button
                 key={item.path}
                 onClick={() => router.push(item.path)}
-                className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg transition-all ${
-                  isActive
+                className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg transition-all ${isActive
                     ? "text-[#F4C64D]"
                     : "text-[#A0A0B0] hover:text-white"
-                }`}
+                  }`}
               >
                 <item.icon className="w-5 h-5" />
                 <span className="text-[10px] font-medium">{item.label}</span>
@@ -190,11 +191,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           {isAdmin && (
             <button
               onClick={() => router.push("/admin")}
-              className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg transition-all ${
-                pathname === "/admin"
+              className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg transition-all ${pathname === "/admin"
                   ? "text-[#F4C64D]"
                   : "text-[#A0A0B0] hover:text-white"
-              }`}
+                }`}
             >
               <Shield className="w-5 h-5" />
               <span className="text-[10px] font-medium">Admin</span>

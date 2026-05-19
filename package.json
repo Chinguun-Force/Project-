@@ -16,9 +16,11 @@
     "lint": "nx run-many -t lint --all",
     "dev:main": "nx run @nomad-go/main:dev",
     "dev:v2": "nx run @nomad-go/v2:dev",
+    "dev:v3": "nx run @nomad-go/v3:dev",
     "dev:pwa": "nx run @nomad-go/pwa:dev",
     "build:main": "nx run @nomad-go/main:build",
     "build:v2": "nx run @nomad-go/v2:build",
+    "build:v3": "nx run @nomad-go/v3:build",
     "build:pwa": "nx run @nomad-go/pwa:build"
   },
   "dependencies": {

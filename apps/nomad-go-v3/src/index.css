@@ -1,0 +1,117 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700;0,9..40,800;1,9..40,400&family=Fraunces:ital,opsz,wght@0,9..144,900;1,9..144,900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 18% 95%;
+    --foreground: 40 8% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 40 8% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 40 8% 10%;
+    --primary: 142 100% 39%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 20 100% 60%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 40 10% 90%;
+    --muted-foreground: 40 4% 43%;
+    --accent: 195 100% 40%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 40 12% 85%;
+    --input: 40 12% 85%;
+    --ring: 142 100% 39%;
+    --radius: 0.875rem;
+
+    /* NomadGo custom tokens */
+    --ng: #00C84A;
+    --ng-dim: rgba(0,200,74,0.10);
+    --ng-border: rgba(0,200,74,0.28);
+    --no: #FF6B35;
+    --no-dim: rgba(255,107,53,0.10);
+    --nb: #0099CC;
+    --ny: #D4A000;
+    --bg: #F5F3EE;
+    --bg2: #FAFAF7;
+    --bg3: #EDEAE3;
+    --card2: #F8F6F1;
+    --tx: #1C1B18;
+    --tx2: #3A3930;
+    --mu: #6E6D66;
+    --ft: #B0AEA6;
+    --bdr: #E0DDD5;
+    --bdr2: #C9C6BC;
+    --r: 14px;
+    --rx: 22px;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    background-color: var(--bg);
+    color: var(--tx);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior-y: none;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  .ng-card {
+    @apply bg-white border border-[var(--bdr)] rounded-[var(--r)];
+  }
+
+  .ng-btn-primary {
+    @apply bg-ng text-white font-extrabold rounded-[14px] px-4 py-3 text-sm transition-transform active:scale-[0.98];
+  }
+
+  .ng-btn-secondary {
+    @apply bg-no-dim border border-[rgba(255,107,53,0.28)] text-no font-extrabold rounded-[14px] px-4 py-3 text-sm transition-transform active:scale-[0.98];
+  }
+
+  .ng-pill {
+    @apply rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide;
+  }
+
+  .ng-xp-bar {
+    @apply h-[7px] rounded-full bg-[var(--bg3)] overflow-hidden;
+  }
+
+  .ng-xp-fill {
+    @apply h-full rounded-full bg-ng;
+  }
+
+  .app-container {
+    @apply max-w-[430px] mx-auto w-full min-h-screen relative;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: 'Fraunces', Georgia, serif;
+  }
+
+  .font-body {
+    font-family: 'DM Sans', system-ui, sans-serif;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

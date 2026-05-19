@@ -32,7 +32,9 @@ export default function Profile() {
   }
 
   const userRank =
-    leaderboard?.findIndex((p) => p.userId === user.id) ?? -1;
+    leaderboard?.findIndex((p: any) => p.userId === user.id) ?? -1;
+
+  const displayName = (user.user_metadata?.playerName || user.user_metadata?.full_name || user.email?.split('@')[0]) ?? "Nomad";
 
   return (
     <div className="min-h-screen bg-[#1A1D26]">
@@ -42,7 +44,7 @@ export default function Profile() {
           <div className="flex flex-col sm:flex-row items-center gap-6">
             <div className="relative">
               <img
-                src={user.avatar ?? "/rank-nomad.png"}
+                src={(user.user_metadata?.avatar_url as string) ?? "/rank-nomad.png"}
                 alt="avatar"
                 className="w-24 h-24 rounded-full border-4 border-[#F4C64D]/40 object-cover"
               />
@@ -52,7 +54,7 @@ export default function Profile() {
             </div>
             <div className="text-center sm:text-left flex-1">
               <h1 className="text-2xl font-bold text-white mb-1">
-                {user.name ?? "Nomad"}
+                {displayName}
               </h1>
               <div className="flex items-center gap-2 justify-center sm:justify-start mb-2">
                 <Award className="w-4 h-4 text-[#F4C64D]" />
@@ -67,12 +69,12 @@ export default function Profile() {
               </div>
               <div className="flex items-center gap-4 justify-center sm:justify-start">
                 <span className="text-xs text-[#A0A0B0]">
-                  {user.role?.charAt(0).toUpperCase() + user.role?.slice(1)}
+                  {user.user_metadata?.role ? (user.user_metadata.role as string).charAt(0).toUpperCase() + (user.user_metadata.role as string).slice(1) : "User"}
                 </span>
                 <span className="text-xs text-[#A0A0B0]">
                   Joined{" "}
-                  {user.createdAt
-                    ? new Date(user.createdAt).toLocaleDateString()
+                  {user.created_at
+                    ? new Date(user.created_at).toLocaleDateString()
                     : "Recently"}
                 </span>
                 {userRank >= 0 && (

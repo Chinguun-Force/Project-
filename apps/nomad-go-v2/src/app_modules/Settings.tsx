@@ -166,18 +166,18 @@ export default function Settings() {
               </div>
               <div className="ml-7 space-y-1">
                 <p className="text-xs text-[#A0A0B0]">
-                  Name: {user.name ?? "Not set"}
+                  Name: {(user.user_metadata?.playerName || user.user_metadata?.full_name || user.email?.split('@')[0]) ?? "Not set"}
                 </p>
                 <p className="text-xs text-[#A0A0B0]">
                   Email: {user.email ?? "Not set"}
                 </p>
                 <p className="text-xs text-[#A0A0B0]">
-                  Role: {user.role}
+                  Role: {user.user_metadata?.role as string ?? "user"}
                 </p>
                 <p className="text-xs text-[#A0A0B0]">
                   Joined:{" "}
-                  {user.createdAt
-                    ? new Date(user.createdAt).toLocaleDateString()
+                  {user.created_at
+                    ? new Date(user.created_at).toLocaleDateString()
                     : "N/A"}
                 </p>
               </div>
