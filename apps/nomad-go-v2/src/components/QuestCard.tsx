@@ -4,10 +4,9 @@ import { Button } from "@/components/ui/button";
 
 
 interface QuestCardProps {
-  id: number;
+  id: string;
   title: string;
   description: string | null;
-  baseXp: number;
   basePoints: number;
   logicType: string;
   category: string;
@@ -48,7 +47,6 @@ export default function QuestCard({
   id,
   title,
   description,
-  baseXp,
   basePoints,
   logicType,
   category,
@@ -59,7 +57,7 @@ export default function QuestCard({
   const [completing, setCompleting] = useState(false);
 
   const completeMutation = {
-    mutate: ({ questId }: { questId: number }) => {
+    mutate: ({ questId }: { questId: string }) => {
       setCompleting(false);
       if (onComplete) {
         onComplete({
@@ -122,12 +120,7 @@ export default function QuestCard({
       <div className="p-4">
         {/* Rewards row */}
         <div className="flex items-center gap-4 mb-3">
-          <div className="flex items-center gap-1.5">
-            <Star className="w-3.5 h-3.5 text-[#A8C69F]" />
-            <span className="text-xs font-mono-data text-[#A8C69F]">
-              {baseXp} XP
-            </span>
-          </div>
+          
           <div className="flex items-center gap-1.5">
             <Star className="w-3.5 h-3.5 text-[#F4C64D]" />
             <span className="text-xs font-mono-data text-[#F4C64D]">

@@ -8,6 +8,7 @@ import {
   boolean,
   bigint,
   time,
+  doublePrecision,
 } from "drizzle-orm/pg-core";
 
 // ========================
@@ -50,6 +51,22 @@ export const sessions = pgTable("sessions", {
 });
 
 // ========================
+// MISSIONS
+// ========================
+export const missions = pgTable("missions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  title: text("title").notNull(),
+  description: text("description"),
+  imageUrl: text("image_url"),
+  xpReward: integer("xp_reward").default(100),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  radiusMeters: integer("radius_meters").default(50),
+  sessionId: uuid("session_id").references(() => sessions.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+// ========================
 // QUESTS
 // ========================
 export const quests = pgTable("quests", {
@@ -58,7 +75,6 @@ export const quests = pgTable("quests", {
   type: text("type").notNull(),
   title: text("title").notNull(),
   description: text("description"),
-  xpReward: integer("xp_reward").default(100),
   dayNumber: integer("day_number").default(1),
   locationName: text("location_name"),
   imageUrl: text("image_url"),
@@ -74,6 +90,8 @@ export const quests = pgTable("quests", {
   icon: text("icon").default("🎯"),
   createdBy: uuid("created_by").references(() => users.id),
   availableFrom: timestamp("available_from", { withTimezone: true }),
+  isCasual: boolean("is_casual").default(true),
+  missionId: uuid("mission_id").references(() => missions.id, { onDelete: "set null" }),
 });
 
 // ========================
