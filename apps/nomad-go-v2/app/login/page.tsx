@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
+import { Spinner } from "@/components/ui/spinner";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -75,7 +76,7 @@ export default function Login() {
               className="w-full bg-[#A8C69F] hover:bg-[#8eb084] text-[#322F36] font-semibold transition-colors"
               disabled={loading}
             >
-              {loading ? "Signing in..." : "Sign In"}
+              {loading ? <Spinner className="w-4 h-4 text-[#322F36]" /> : "Sign In"}
             </Button>
           </form>
         </CardContent>

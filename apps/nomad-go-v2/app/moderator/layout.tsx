@@ -1,7 +1,8 @@
 import { createClient } from "@/utils/supabase/server";
 import { redirect } from "next/navigation";
+import { canAccessModerator } from "@/lib/auth/roles";
 
-export default async function AdminLayout({
+export default async function ModeratorLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -19,10 +20,9 @@ export default async function AdminLayout({
     .from("users")
     .select("role")
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
 
-  const { canAccessAdmin } = await import("@/lib/auth/roles");
-  if (!canAccessAdmin(profile?.role)) {
+  if (!canAccessModerator(profile?.role)) {
     redirect("/");
   }
 

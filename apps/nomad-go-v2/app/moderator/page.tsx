@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { MapPin, Globe, Plus, Clock, FileText, Image as ImageIcon, Link2, DollarSign } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 
 export default function ModeratorDashboard() {
   // --- STATE: LEFT PANEL (CREATE) ---
@@ -270,9 +271,9 @@ export default function ModeratorDashboard() {
                             {isSelected && <div className="w-2 h-2 rounded-full bg-foreground" />}
                           </div>
                         </div>
-                        {m.xpReward > 0 && (
+                        {(m.xp_reward ?? 0) > 0 && (
                           <span className={`text-xs ${isSelected ? 'text-background/80' : 'text-muted-foreground'}`}>
-                            +{m.xpReward} XP
+                            +{m.xp_reward} XP
                           </span>
                         )}
                       </div>
@@ -285,7 +286,7 @@ export default function ModeratorDashboard() {
               </div>
 
               <Button type="submit" disabled={isCreating} className="w-full text-base py-5">
-                {isCreating ? "Deploying Session..." : "Publish New Tour Session"}
+                {isCreating ? <Spinner className="w-5 h-5" /> : "Publish New Tour Session"}
               </Button>
             </form>
           </div>

@@ -1,5 +1,6 @@
 'use server'
 import { createClient } from '@/utils/supabase/server'
+import { DEFAULT_QUEST_XP_REWARD } from '@/lib/gamification'
 
 // 1. Fetch All Live Missions from db
 export async function getMissionsAction() {
@@ -38,14 +39,7 @@ export async function getToursAction() {
   const { data: sessionsData, error } = await supabase
     .from("sessions")
     .select(`
-      id, name, location, is_active, journey_data,
-      image_url, price, duration_days, start_date, end_date, contact_email, contact_phone, viber_link,
-      journey_days!session_id (
-        id,
-        journey_steps!journey_steps_day_id_fkey (
-          id, xp_reward
-        )
-      ),
+      *,
       session_missions (
         missions (
           title,
@@ -54,6 +48,7 @@ export async function getToursAction() {
       )
     `)
     .eq("is_active", true)
+    .order("created_at", { ascending: false })
 
   if (error) {
     console.error("⛔ Supabase Error inside getToursAction:", error.message)
@@ -76,9 +71,9 @@ export async function getTourDetailsAction(id: string) {
     .from("sessions")
     .select(`
       *,
-      journey_days!session_id (
+      journey_days (
         *,
-        journey_steps!journey_steps_day_id_fkey (*)
+        journey_steps (*)
       ),
       session_missions (
         missions (*)
@@ -95,6 +90,23 @@ export async function getTourDetailsAction(id: string) {
   if (data) {
     data.missions = data.session_missions?.map((sm: any) => sm.missions).filter(Boolean) || []
     delete data.session_missions
+
+    if (data.journey_days) {
+      data.journey_days.sort((a: { day_number?: number }, b: { day_number?: number }) =>
+        (a.day_number || 0) - (b.day_number || 0)
+      );
+      data.journey_days.forEach((day: { journey_steps?: { step_order?: number; time_slot?: string; time?: string }[] }) => {
+        if (day.journey_steps) {
+          day.journey_steps.sort(
+            (a, b) =>
+              (a.step_order || 0) - (b.step_order || 0) ||
+              String(a.time_slot || a.time || "").localeCompare(
+                String(b.time_slot || b.time || "")
+              )
+          );
+        }
+      });
+    }
   }
 
   return data;
@@ -142,7 +154,7 @@ export async function getTouristActiveSessionAction(sessionId: string) {
       *,
       journey_days (
         *,
-        journey_steps!journey_steps_day_id_fkey (*)
+        journey_steps (*)
       )
     `)
     .eq('id', sessionId)
@@ -219,6 +231,86 @@ export async function grantUserRewardsAction(userId: string, baseXp: number, bas
   }
 
   return { success: true, finalXpReward, finalPointReward, newLevel, hasLeveledUp };
+}
+
+export async function completeQuestAction(userId: string, questId: string) {
+  const supabase = await createClient();
+  
+  // 1. Fetch Quest Base Rewards
+  const { data: quest, error: questError } = await supabase
+    .from('quests')
+    .select('id, point_reward')
+    .eq('id', questId)
+    .single();
+
+  if (questError) {
+    console.error('⛔ completeQuestAction:', questError.message);
+    return { success: false, error: questError.message };
+  }
+  if (!quest) {
+    return { success: false, error: "Quest not found" };
+  }
+
+  const baseXp = DEFAULT_QUEST_XP_REWARD;
+  const basePoints = quest.point_reward ?? 0;
+
+  // 2. Check if already completed
+  const { data: existingCompletion } = await supabase
+    .from('user_quests')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('quest_id', questId)
+    .maybeSingle();
+
+  if (existingCompletion) {
+    return { success: false, error: "Quest already completed" };
+  }
+
+  // 3. Insert completion record
+  const { error: insertError } = await supabase
+    .from('user_quests')
+    .insert({
+      user_id: userId,
+      quest_id: questId,
+      status: 'completed'
+    });
+
+  if (insertError) {
+    return { success: false, error: "Failed to record completion" };
+  }
+
+  // 4. Grant RPG Rewards
+  return grantUserRewardsAction(userId, baseXp, basePoints);
+}
+
+/** Mission / journey-step completion (XP from step; optional Shagai if point_reward exists). */
+export async function completeJourneyStepAction(userId: string, stepId: string) {
+  const supabase = await createClient();
+
+  const { data: step, error: stepError } = await supabase
+    .from('journey_steps')
+    .select('id, xp_reward, status')
+    .eq('id', stepId)
+    .single();
+
+  if (stepError || !step) {
+    return { success: false, error: 'Mission step not found' };
+  }
+
+  if (step.status === 'completed') {
+    return { success: false, error: 'Step already completed' };
+  }
+
+  const { error: stepUpdateError } = await supabase
+    .from('journey_steps')
+    .update({ status: 'completed' })
+    .eq('id', stepId);
+
+  if (stepUpdateError) {
+    return { success: false, error: 'Failed to record step completion' };
+  }
+
+  return grantUserRewardsAction(userId, step.xp_reward || 0, 0);
 }
 
 export async function claimDailyCheckinAction(userId: string) {

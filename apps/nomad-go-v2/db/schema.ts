@@ -132,7 +132,6 @@ export const journeySteps = pgTable("journey_steps", {
   type: text("type").default("travel"),
   xpReward: integer("xp_reward").default(0),
   status: text("status").default("pending"),
-  journeyDayId: uuid("journey_day_id").references(() => journeyDays.id),
   timeSlot: text("time_slot"),
 });
 

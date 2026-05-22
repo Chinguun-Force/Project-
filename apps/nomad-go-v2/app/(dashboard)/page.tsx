@@ -4,21 +4,19 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
 import { Flame, MapPin, ChevronRight } from "lucide-react";
-import { getTouristActiveSessionAction, claimDailyCheckinAction, getUserProgressAction } from "@/app/actions/gameActions";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  getTouristActiveSessionAction,
+  claimDailyCheckinAction,
+  getUserProgressAction,
+  completeJourneyStepAction,
+} from "@/app/actions/gameActions";
 import { toast } from "sonner";
 
-// Helper for Rank Calculation
-const getMongolianRank = (level: number) => {
-  if (level >= 46) return "Khan";
-  if (level >= 37) return "Noyon";
-  if (level >= 29) return "Suldtei";
-  if (level >= 22) return "Talyn Khun";
-  if (level >= 16) return "Zam Medegch";
-  if (level >= 11) return "Nuudelchin";
-  if (level >= 7) return "Aduuchin";
-  if (level >= 4) return "Zamchin";
-  return "Otgon"; // 1-3
-};
+import {
+  computeOptimisticRewards,
+  getMongolianRank,
+} from "@/lib/gamification";
 
 // SVG for Knucklebone (Horse position)
 const ShagaiIcon = ({ className }: { className?: string }) => (
@@ -43,6 +41,7 @@ export default function Dashboard() {
   const [activeSession, setActiveSession] = useState<any>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const [completingStepId, setCompletingStepId] = useState<string | null>(null);
 
   // Optimistic UI State
   const [localXp, setLocalXp] = useState(0); // Total XP (optional, but keep for history if needed)
@@ -122,14 +121,15 @@ export default function Dashboard() {
     if (!user || isCheckingIn) return;
     setIsCheckingIn(true);
     
-    // Optimistic Multiplier Math
     const baseXp = 10;
     const basePoints = 5;
-    const optimisticPoints = Math.floor(basePoints * (1 + (localLevel * 0.05)));
-    const optimisticXp = baseXp; // No level-based scaling for XP
+    const { finalXpReward, finalPointReward } = computeOptimisticRewards(
+      baseXp,
+      basePoints,
+      localLevel
+    );
 
-    // Optimistic Update
-    triggerRewardAnimation(optimisticXp, optimisticPoints);
+    triggerRewardAnimation(finalXpReward, finalPointReward);
 
     const res = await claimDailyCheckinAction(user.id);
     if (res.success) {
@@ -158,6 +158,62 @@ export default function Dashboard() {
       });
     }
     setIsCheckingIn(false);
+  };
+
+  const handleMissionStepComplete = async (step: {
+    id: string;
+    xp_reward?: number;
+    status?: string;
+  }) => {
+    if (!user || completingStepId || step.status === "completed") return;
+    const baseXp = step.xp_reward || 0;
+    if (baseXp <= 0) return;
+
+    setCompletingStepId(step.id);
+    const { finalXpReward, finalPointReward } = computeOptimisticRewards(
+      baseXp,
+      0,
+      localLevel
+    );
+    triggerRewardAnimation(finalXpReward, finalPointReward);
+
+    const res = await completeJourneyStepAction(user.id, step.id);
+    if (res.success) {
+      getUserProgressAction(user.id).then((data) => {
+        if (data) {
+          setLocalXp(data.totalXp);
+          setLocalCurrentXp(data.currentXp);
+          setLocalShagai(data.pointsBalance);
+          setLocalLevel(data.level);
+          setLocalXpThreshold(data.xpThreshold);
+        }
+      });
+      setActiveSession((prev: typeof activeSession) => {
+        if (!prev?.journey_days) return prev;
+        return {
+          ...prev,
+          journey_days: prev.journey_days.map((day: { journey_steps?: { id: string; status?: string }[] }) => ({
+            ...day,
+            journey_steps: day.journey_steps?.map((s) =>
+              s.id === step.id ? { ...s, status: "completed" } : s
+            ),
+          })),
+        };
+      });
+      router.refresh();
+    } else {
+      toast.error("Could not complete mission step.");
+      getUserProgressAction(user.id).then((data) => {
+        if (data) {
+          setLocalXp(data.totalXp);
+          setLocalCurrentXp(data.currentXp);
+          setLocalShagai(data.pointsBalance);
+          setLocalLevel(data.level);
+          setLocalXpThreshold(data.xpThreshold);
+        }
+      });
+    }
+    setCompletingStepId(null);
   };
 
   if (!user) {
@@ -284,7 +340,11 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="hidden md:flex items-center text-emerald-400 font-medium bg-emerald-500/10 px-4 py-2 rounded-full relative z-10 group-hover:bg-emerald-500/20 transition-colors">
-              {isCheckingIn ? "Tending..." : "Tend Fire"} <ChevronRight className="w-4 h-4 ml-1" />
+              {isCheckingIn ? (
+                <Spinner className="w-4 h-4 mr-2 text-emerald-400" />
+              ) : (
+                <>Tend Fire <ChevronRight className="w-4 h-4 ml-1" /></>
+              )}
             </div>
           </button>
         </div>
@@ -341,6 +401,18 @@ export default function Dashboard() {
                                 <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
                                   {step.description}
                                 </p>
+                              )}
+                              {step.xp_reward > 0 && step.status !== "completed" && (
+                                <button
+                                  type="button"
+                                  disabled={completingStepId === step.id}
+                                  onClick={() => handleMissionStepComplete(step)}
+                                  className="mt-3 text-xs font-semibold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                                >
+                                  {completingStepId === step.id
+                                    ? "Completing…"
+                                    : `Complete (+${step.xp_reward} XP)`}
+                                </button>
                               )}
                             </div>
                           </div>

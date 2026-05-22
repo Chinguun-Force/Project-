@@ -70,6 +70,7 @@ export async function createTourSessionAction(data: {
   }
 
   revalidatePath('/moderator')
+  revalidatePath('/tours')
   return { success: true }
 }
 
@@ -94,6 +95,7 @@ export async function addJourneyDayAction(data: {
   }
 
   revalidatePath('/moderator')
+  revalidatePath('/tours')
   return { success: true }
 }
 
@@ -117,7 +119,6 @@ export async function addJourneyStepAction(data: {
 
   const { error } = await supabase.from('journey_steps').insert({
     day_id: data.day_id,
-    journey_day_id: data.day_id,
     step_order: step_order,
     time_slot: data.time_slot,
     time: data.time_slot,
@@ -133,6 +134,7 @@ export async function addJourneyStepAction(data: {
   }
 
   revalidatePath('/moderator')
+  revalidatePath('/tours')
   return { success: true }
 }
 
@@ -186,7 +188,7 @@ export async function getModeratorItineraryAction(session_id: string) {
   // Combine
   return days.map(day => ({
     ...day,
-    steps: steps.filter(step => step.day_id === day.id || step.journey_day_id === day.id)
+    steps: steps.filter((step) => step.day_id === day.id)
   }))
 }
 

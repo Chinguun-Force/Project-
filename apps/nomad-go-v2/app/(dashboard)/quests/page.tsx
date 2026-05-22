@@ -1,15 +1,20 @@
 "use client";
-import { useState, useEffect } from "react";
-import { getQuestsAction, getMissionsAction } from "@/app/actions/gameActions";
+import { useState, useEffect, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { getQuestsAction, getMissionsAction, completeQuestAction } from "@/app/actions/gameActions";
 import { createClient } from "@/utils/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserStats } from "@/hooks/useUserStats";
 import { useGeolocation, MissionLocation } from "@/hooks/useGeolocation";
 import QuestCard from "@/components/QuestCard";
-import XPProgressBar from "@/components/XPProgressBar";
-import EnergyCore from "@/components/EnergyCore";
 import RankCalibration from "@/components/RankCalibration";
 import FloatingGains from "@/components/FloatingGains";
+import {
+  computeOptimisticRewards,
+  DEFAULT_QUEST_XP_REWARD,
+  getMongolianRank,
+  levelPointMultiplier,
+} from "@/lib/gamification";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -27,6 +32,8 @@ import {
   Calendar,
   Sparkles,
 } from "lucide-react";
+import { toast } from "sonner";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Quest {
   id: string;
@@ -39,18 +46,21 @@ interface Quest {
   isCompleted: boolean;
   isCasual: boolean;
   missionId: string | null;
+  baseXp: number;
 }
 
 export default function Quests() {
   const { user } = useAuth();
-  const { userStats, completeQuest, refreshStats } = useUserStats();
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const { userStats, refreshStats } = useUserStats();
   const supabase = createClient();
 
   const [quests, setQuests] = useState<Quest[]>([]);
   const [missions, setMissions] = useState<MissionLocation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const { coords, activeMissionId } = useGeolocation(missions);
+  const { activeMissionId } = useGeolocation(missions);
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -75,79 +85,110 @@ export default function Quests() {
       setIsLoading(true);
 
       const sessionId = userStats.sessionId;
-      
+
       const [rawQuests, rawMissions, userQuestsRes] = await Promise.all([
         getQuestsAction(),
         getMissionsAction(),
-        supabase.from("user_quests").select("quest_id").eq("user_id", userStats.id)
+        supabase.from("user_quests").select("quest_id").eq("user_id", userStats.id),
       ]);
 
-      const completedIds = new Set(userQuestsRes.data?.map(uq => uq.quest_id) || []);
+      const completedIds = new Set(userQuestsRes.data?.map((uq) => uq.quest_id) || []);
 
-      const sessionMissions = rawMissions.filter(m => !m.session_id || m.session_id === sessionId);
-      const availableQuests = rawQuests.filter(q => 
-        q.status === "available" && (!q.session_id || q.session_id === sessionId)
+      const sessionMissions = rawMissions.filter(
+        (m) => !m.session_id || m.session_id === sessionId
+      );
+      const availableQuests = rawQuests.filter(
+        (q) => q.status === "available" && (!q.session_id || q.session_id === sessionId)
       );
 
-      setMissions(sessionMissions.map(m => ({
-        id: m.id,
-        latitude: m.latitude,
-        longitude: m.longitude,
-        radiusMeters: m.radius_meters || 50
-      })));
+      setMissions(
+        sessionMissions.map((m) => ({
+          id: m.id,
+          latitude: m.latitude,
+          longitude: m.longitude,
+          radiusMeters: m.radius_meters || 50,
+        }))
+      );
 
-      setQuests(availableQuests.map(q => ({
-        id: q.id,
-        title: q.title,
-        description: q.description || "",
-        baseXp: q.xp_reward || 100,
-        basePoints: q.point_reward || 50,
-        logicType: q.type || "manual",
-        category: q.category || "global",
-        imageUrl: q.image_url || "/quest-steppe.jpg",
-        isCompleted: completedIds.has(q.id),
-        isCasual: q.is_casual !== false,
-        missionId: q.mission_id,
-      })));
-      
+      setQuests(
+        availableQuests.map((q) => ({
+          id: q.id,
+          title: q.title,
+          description: q.description || "",
+          baseXp: DEFAULT_QUEST_XP_REWARD,
+          basePoints: q.point_reward || 50,
+          logicType: q.type || "manual",
+          category: q.category || "global",
+          imageUrl: q.image_url || "/quest-steppe.jpg",
+          isCompleted: completedIds.has(q.id),
+          isCasual: q.is_casual !== false,
+          missionId: q.mission_id,
+        }))
+      );
+
       setIsLoading(false);
     };
 
     fetchQuestsAndMissions();
   }, [userStats?.id, userStats?.sessionId, supabase]);
 
-  const handleQuestComplete = async (result: {
-    xpEarned: number;
-    pointsEarned: number;
-    levelsGained: number;
-    newLevel: number;
-    newRank: string;
-    newMultiplier: number;
-    questId: string;
-    responseData?: any;
-  }) => {
-    // Write to DB
-    await completeQuest(result.questId, result.pointsEarned, result.responseData);
-    
-    // UI Updates
-    setQuests(quests.map(q => q.id === result.questId ? { ...q, isCompleted: true } : q));
+  const handleQuestComplete = async (
+    questId: string,
+    baseXp: number,
+    basePoints: number
+  ) => {
+    const userId = userStats?.id ?? user?.id;
+    if (!userId) return;
 
-    setFloatingGains({
-      xp: result.xpEarned,
-      points: result.pointsEarned,
+    const currentLevel = userStats?.level ?? 1;
+    const oldRank = getMongolianRank(currentLevel);
+    const { finalXpReward, finalPointReward } = computeOptimisticRewards(
+      baseXp,
+      basePoints,
+      currentLevel
+    );
+
+    // 1. Instant tactile feedback (before server round-trip)
+    setFloatingGains({ xp: finalXpReward, points: finalPointReward });
+    setQuests((prev) =>
+      prev.map((q) => (q.id === questId ? { ...q, isCompleted: true } : q))
+    );
+
+    startTransition(async () => {
+      const dbResult = await completeQuestAction(userId, questId);
+
+      if (dbResult?.success) {
+        const newLevel =
+          "newLevel" in dbResult && dbResult.newLevel != null
+            ? dbResult.newLevel
+            : currentLevel;
+        const hasLeveledUp =
+          "hasLeveledUp" in dbResult && dbResult.hasLeveledUp === true;
+
+        if (hasLeveledUp) {
+          setCalibrationData({
+            oldRank,
+            newRank: getMongolianRank(newLevel),
+            newLevel,
+            newMultiplier: levelPointMultiplier(newLevel),
+          });
+          setShowCalibration(true);
+        }
+
+        await refreshStats();
+        router.refresh();
+      } else {
+        toast.error(
+          "error" in dbResult && dbResult.error
+            ? String(dbResult.error)
+            : "Could not complete quest."
+        );
+        setQuests((prev) =>
+          prev.map((q) => (q.id === questId ? { ...q, isCompleted: false } : q))
+        );
+        await refreshStats();
+      }
     });
-
-    if (result.levelsGained > 0) {
-      setCalibrationData({
-        oldRank: "Nomad", // simplified for now
-        newRank: result.newRank,
-        newLevel: result.newLevel,
-        newMultiplier: result.newMultiplier,
-      });
-      setShowCalibration(true);
-    }
-
-    refreshStats();
   };
 
   const handleCalibrationComplete = () => {
@@ -156,11 +197,8 @@ export default function Quests() {
   };
 
   const filteredQuests = quests?.map((q) => {
-    // Visibility Check based on strict Geofencing Rules
     let isVisible = true;
-    
-    // 1. Render if quest.is_casual === true
-    // 2. OR render if quest.is_casual === false && quest.mission_id === activeMissionId
+
     if (!q.isCasual) {
       if (q.missionId !== activeMissionId) {
         isVisible = false;
@@ -171,13 +209,10 @@ export default function Quests() {
       search === "" ||
       q.title.toLowerCase().includes(search.toLowerCase()) ||
       (q.description?.toLowerCase().includes(search.toLowerCase()) ?? false);
-    
-    const matchesCategory =
-      categoryFilter === "all" || q.category === categoryFilter;
-    
-    const matchesLogic =
-      logicFilter === "all" || q.logicType === logicFilter;
-    
+
+    const matchesCategory = categoryFilter === "all" || q.category === categoryFilter;
+    const matchesLogic = logicFilter === "all" || q.logicType === logicFilter;
+
     if (!matchesSearch || !matchesCategory || !matchesLogic || q.isCompleted) {
       isVisible = false;
     }
@@ -185,11 +220,10 @@ export default function Quests() {
     return { ...q, isVisible };
   });
 
-  const visibleCount = filteredQuests.filter(q => q.isVisible).length;
+  const visibleCount = filteredQuests.filter((q) => q.isVisible).length;
 
   return (
     <div className="min-h-screen bg-[#1A1D26] relative overflow-hidden">
-      {/* Overlays */}
       {showCalibration && calibrationData && (
         <RankCalibration
           oldRank={calibrationData.oldRank}
@@ -207,17 +241,16 @@ export default function Quests() {
       )}
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Header */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
             <MapPin className="w-6 h-6 text-[#10B981]" />
             Quest Pool
           </h1>
           <p className="text-sm text-[#A0A0B0]">
-            Complete quests to earn XP and points across Mongolia
+            Complete quests to earn XP and Shagai across Mongolia
           </p>
         </div>
-        {/* Search & Filters */}
+
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A0A0B0]" />
@@ -273,10 +306,10 @@ export default function Quests() {
           </div>
         </div>
 
-        {/* Results count */}
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm text-[#A0A0B0]">
             {visibleCount} quests available
+            {isPending ? " · syncing…" : ""}
           </p>
           {(categoryFilter !== "all" || logicFilter !== "all" || search) && (
             <Button
@@ -294,36 +327,42 @@ export default function Quests() {
           )}
         </div>
 
-        {/* Quest Grid */}
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="bg-[#322F36] rounded-2xl h-80 animate-pulse"
-              />
+              <div key={i} className="rounded-2xl overflow-hidden border border-[#322F36]">
+                <Skeleton className="h-40 w-full rounded-none bg-[#322F36]" />
+                <div className="p-4 space-y-3 bg-[#322F36]/50">
+                  <Skeleton className="h-5 w-2/3 bg-[#322F36]" />
+                  <Skeleton className="h-4 w-full bg-[#322F36]" />
+                  <Skeleton className="h-9 w-full bg-[#322F36]" />
+                </div>
+              </div>
             ))}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative min-h-[500px]">
             {filteredQuests?.map((quest) => (
-              <div 
-                key={quest.id} 
+              <div
+                key={quest.id}
                 className={`transition-all duration-500 ease-in-out origin-top ${
-                  quest.isVisible 
-                    ? 'opacity-100 scale-100 h-auto mb-4' 
-                    : 'opacity-0 scale-95 h-0 overflow-hidden m-0 p-0 pointer-events-none absolute'
+                  quest.isVisible
+                    ? "opacity-100 scale-100 h-auto mb-4"
+                    : "opacity-0 scale-95 h-0 overflow-hidden m-0 p-0 pointer-events-none absolute"
                 }`}
               >
                 <QuestCard
                   id={quest.id}
                   title={quest.title}
                   description={quest.description}
+                  baseXp={quest.baseXp}
                   basePoints={quest.basePoints}
                   logicType={quest.logicType}
                   category={quest.category}
                   imageUrl={quest.imageUrl}
-                  onComplete={(res) => handleQuestComplete({ ...res, questId: quest.id })}
+                  onComplete={({ baseXp, basePoints }) =>
+                    handleQuestComplete(quest.id, baseXp, basePoints)
+                  }
                 />
               </div>
             ))}

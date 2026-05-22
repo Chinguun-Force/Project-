@@ -1,5 +1,10 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
+import {
+  completeJourneyStepAction,
+  completeQuestAction,
+} from '@/app/actions/gameActions';
+import { DEFAULT_QUEST_XP_REWARD } from '@/lib/gamification';
 
 type QuestStepType = "check" | "text" | "photo";
 
@@ -97,71 +102,22 @@ export async function POST(req: Request) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { data: profile, error: profileError } = await supabase
-      .from('users')
-      .select('level, current_xp, xp_threshold, total_xp, points, completed_quests')
-      .eq('id', user.id)
-      .maybeSingle();
-
-    if (profileError) return NextResponse.json({ error: profileError.message }, { status: 400 });
-
-    const level = profile?.level || 1;
-    let currentXp = profile?.current_xp || 0;
-    let xpThreshold = profile?.xp_threshold || 1000;
-    let totalXp = profile?.total_xp || 0;
-    let points = profile?.points || 0;
-    let completedQuests = profile?.completed_quests || 0;
-
-    // Journey step completion -> XP reward
+    // Journey / mission step -> centralized rewards engine
     if (stepId) {
-      const { data: step, error: stepError } = await supabase
-        .from('journey_steps')
-        .select('id, xp_reward')
-        .eq('id', stepId)
-        .maybeSingle();
-
-      if (stepError) return NextResponse.json({ error: stepError.message }, { status: 400 });
-      if (!step) return NextResponse.json({ error: 'Step not found' }, { status: 404 });
-
-      const xpReward = step.xp_reward || 0;
-      const nextCurrentXp = currentXp + xpReward;
-      totalXp += xpReward;
-      currentXp = nextCurrentXp;
-
-      let nextLevel = level;
-      while (currentXp >= xpThreshold) {
-        currentXp -= xpThreshold;
-        nextLevel += 1;
-        xpThreshold = Math.round(xpThreshold * 1.15);
+      const result = await completeJourneyStepAction(user.id, stepId);
+      if (!result.success) {
+        return NextResponse.json(
+          { error: 'error' in result ? result.error : 'Step completion failed' },
+          { status: 400 }
+        );
       }
-
-      const { error: stepUpdateError } = await supabase
-        .from('journey_steps')
-        .update({ status: 'completed' })
-        .eq('id', stepId);
-
-      if (stepUpdateError) return NextResponse.json({ error: stepUpdateError.message }, { status: 400 });
-
-      const { error: profileUpdateError } = await supabase
-        .from('users')
-        .update({
-          level: nextLevel,
-          current_xp: currentXp,
-          xp_threshold: xpThreshold,
-          total_xp: totalXp,
-        })
-        .eq('id', user.id);
-
-      if (profileUpdateError) return NextResponse.json({ error: profileUpdateError.message }, { status: 400 });
-
       return NextResponse.json({
         type: 'step',
         step_id: stepId,
-        xp_reward: xpReward,
-        level: nextLevel,
-        current_xp: currentXp,
-        xp_threshold: xpThreshold,
-        total_xp: totalXp,
+        xp_reward: result.finalXpReward,
+        point_reward: result.finalPointReward,
+        level: result.newLevel,
+        has_leveled_up: result.hasLeveledUp,
       });
     }
 
@@ -195,10 +151,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
-    const basePointReward = quest.point_reward || 0;
-    const multiplier = 1 + (level * 0.1);
-    const finalPoints = Math.round(basePointReward * multiplier);
-
     const { data, error } = await supabase
       .from('quest_responses')
       .upsert({
@@ -227,25 +179,22 @@ export async function POST(req: Request) {
       }
     }
 
-    points += finalPoints;
-    completedQuests += 1;
-    const { error: userUpdateError } = await supabase
-      .from('users')
-      .update({
-        points,
-        completed_quests: completedQuests,
-      })
-      .eq('id', user.id);
-
-    if (userUpdateError) return NextResponse.json({ error: userUpdateError.message }, { status: 400 });
+    const rewardResult = await completeQuestAction(user.id, questId);
+    if (!rewardResult.success) {
+      return NextResponse.json(
+        { error: 'error' in rewardResult ? rewardResult.error : 'Quest reward failed' },
+        { status: 400 }
+      );
+    }
 
     return NextResponse.json({
       ...data,
-      point_reward: finalPoints,
-      base_point_reward: basePointReward,
-      multiplier,
-      points,
-      completed_quests: completedQuests,
+      xp_reward: rewardResult.finalXpReward,
+      point_reward: rewardResult.finalPointReward,
+      base_xp_reward: DEFAULT_QUEST_XP_REWARD,
+      base_point_reward: quest.point_reward || 0,
+      level: rewardResult.newLevel,
+      has_leveled_up: rewardResult.hasLeveledUp,
     });
   } catch {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

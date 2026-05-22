@@ -55,7 +55,7 @@ export default function Admin() {
   const [selectedRoles, setSelectedRoles] = useState<Record<string, string>>({});
 
   // Form states
-  const [missionForm, setMissionForm] = useState({ title: "", description: "", xpReward: 100, latitude: 47.92, longitude: 106.92, radiusMeters: 50 });
+  const [missionForm, setMissionForm] = useState({ title: "", description: "", imageUrl: "", xpReward: 100, latitude: 47.92, longitude: 106.92, radiusMeters: 50 });
   const [questForm, setQuestForm] = useState({ title: "", description: "", type: "quiz", pointReward: 50, difficulty: "easy", isCasual: true, missionId: "", questData: "{}" });
   const [sessionForm, setSessionForm] = useState({ name: "", location: "", startDate: "", endDate: "", guideId: "" });
 
@@ -101,7 +101,7 @@ export default function Admin() {
     try {
       await createMission(missionForm);
       toast.success("Mission created successfully!");
-      setMissionForm({ title: "", description: "", xpReward: 100, latitude: 47.92, longitude: 106.92, radiusMeters: 50 });
+      setMissionForm({ title: "", description: "", imageUrl: "", xpReward: 100, latitude: 47.92, longitude: 106.92, radiusMeters: 50 });
       // reload missions
       const mData = await getMissions();
       setMissions(mData || []);
@@ -284,6 +284,13 @@ export default function Admin() {
                     <label className="text-sm text-[#A0A0B0]">Description</label>
                     <textarea value={missionForm.description} onChange={e => setMissionForm({...missionForm, description: e.target.value})} className="w-full rounded-md bg-[#1A1D26] border border-[#322F36] text-white p-2 mt-1 min-h-[100px]" />
                   </div>
+                  <div>
+                    <label className="text-sm text-[#A0A0B0]">Image URL</label>
+                    <Input value={missionForm.imageUrl} onChange={e => setMissionForm({...missionForm, imageUrl: e.target.value})} placeholder="https://..." className="bg-[#1A1D26] border-[#322F36] text-white mt-1" />
+                    {missionForm.imageUrl && (
+                      <img src={missionForm.imageUrl} alt="Preview" className="mt-2 h-24 w-full object-cover rounded-lg border border-[#322F36]" />
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
                       <label className="text-sm text-[#A0A0B0]">XP Reward</label>
@@ -303,7 +310,7 @@ export default function Admin() {
                     </div>
                   </div>
                   <Button onClick={handleCreateMission} disabled={isSubmitting} className="w-full bg-[#A8C69F] text-[#1A1D26] font-bold mt-4">
-                    <Plus className="w-4 h-4 mr-2" /> Create Mission
+                    {isSubmitting ? <span className="inline-flex items-center gap-2"><span className="w-4 h-4 border-2 border-[#1A1D26]/30 border-t-[#1A1D26] rounded-full animate-spin" /> Creating...</span> : <><Plus className="w-4 h-4 mr-2" /> Create Mission</>}
                   </Button>
                 </div>
               </div>

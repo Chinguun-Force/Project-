@@ -11,6 +11,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { characters, countries } from "@/data/characters";
 import { User, Check, Mail, Lock, Calendar, MapPin, ChevronRight, ChevronLeft } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 
 export default function Signup() {
   const [step, setStep] = useState(1);
@@ -63,7 +64,7 @@ export default function Signup() {
       toast.error(error);
     } else if (success) {
       toast.success("Successfully signed up! Redirecting...");
-      router.push("/map");
+      router.push("/");
     }
   };
 
@@ -241,7 +242,7 @@ export default function Signup() {
                     disabled={loading}
                     className="flex-1 bg-[#A8C69F] hover:bg-[#8eb084] text-[#1A1D26] font-bold"
                   >
-                    {loading ? "Signing up..." : "Complete Setup"}
+                    {loading ? <Spinner className="w-4 h-4" /> : "Complete Setup"}
                   </Button>
                 </div>
               </motion.div>

@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  completeQuestAction,
+  completeJourneyStepAction,
+} from "@/app/actions/gameActions";
 import type { User } from "@db/schema";
 
 export function useUserStats() {
@@ -19,7 +23,16 @@ export function useUserStats() {
       .single();
 
     if (!error && data) {
-      setUserStats(data as unknown as User);
+      const row = data as Record<string, unknown>;
+      setUserStats({
+        ...(data as User),
+        availablePoints: Number(row.available_points ?? row.availablePoints ?? 0),
+        points: Number(row.points ?? row.available_points ?? 0),
+        level: Number(row.level ?? 1),
+        currentXp: Number(row.current_xp ?? row.currentXp ?? 0),
+        totalXp: Number(row.total_xp ?? row.totalXp ?? 0),
+        xpThreshold: Number(row.xp_threshold ?? row.xpThreshold ?? 1000),
+      } as User);
     }
     setIsLoading(false);
   }, [authUser?.id, supabase]);
@@ -28,95 +41,40 @@ export function useUserStats() {
     fetchStats();
   }, [fetchStats]);
 
-  const addXp = async (amount: number) => {
-    if (!userStats || !authUser?.id) return null;
-
-    let newXp = (userStats.currentXp ?? 0) + amount;
-    let newLevel = userStats.level ?? 1;
-    let newThreshold = userStats.xpThreshold ?? 1000;
-    const newTotalXp = (userStats.totalXp ?? 0) + amount;
-    let levelsGained = 0;
-
-    while (newXp >= newThreshold) {
-      newXp -= newThreshold;
-      newLevel += 1;
-      levelsGained += 1;
-      newThreshold = Math.floor(newThreshold * 1.5);
-    }
-
-    const updates = {
-      current_xp: newXp,
-      level: newLevel,
-      xp_threshold: newThreshold,
-      total_xp: newTotalXp,
-    };
-
-    const { error } = await supabase
-      .from("users")
-      .update(updates)
-      .eq("id", authUser.id);
-
-    if (!error) {
-      setUserStats((prev) => prev ? { ...prev, currentXp: newXp, level: newLevel, xpThreshold: newThreshold, totalXp: newTotalXp } : prev);
-      return { levelsGained, newLevel };
-    }
-    return null;
-  };
-
-  const addPoints = async (amount: number) => {
-    if (!userStats || !authUser?.id) return false;
-
-    const newPoints = (userStats.points ?? 0) + amount;
-    const { error } = await supabase
-      .from("users")
-      .update({ points: newPoints })
-      .eq("id", authUser.id);
-
-    if (!error) {
-      setUserStats((prev) => prev ? { ...prev, points: newPoints } : prev);
-      return true;
-    }
-    return false;
-  };
-
-  const completeQuest = async (questId: string, pointsEarned: number, responseData?: any) => {
-    if (!userStats || !authUser?.id) return false;
-
-    const { error } = await supabase.from('user_quests').insert({
-      user_id: authUser.id,
-      quest_id: questId,
-      status: 'completed',
-    });
+  /** Quest completion — delegates to centralized RPG rewards engine. */
+  const completeQuest = async (questId: string, _pointsEarned?: number, responseData?: unknown) => {
+    if (!authUser?.id) return null;
 
     if (responseData) {
-      await supabase.from('quest_responses').insert({
+      await supabase.from("quest_responses").insert({
         user_id: authUser.id,
         quest_id: questId,
-        status: 'completed',
+        status: "completed",
         response_data: responseData,
       });
     }
 
-    if (!error) {
-      return await addPoints(pointsEarned);
+    const result = await completeQuestAction(authUser.id, questId);
+    if (result?.success) {
+      await fetchStats();
     }
-    return false;
+    return result;
   };
 
-  const completeMission = async (stepId: string, xpEarned: number) => {
-    if (!userStats || !authUser?.id) return null;
-    
-    // Note: If you have a user_missions or user_journey_steps table in the future,
-    // insert completion record here.
-    
-    return await addXp(xpEarned);
+  /** Journey / mission step completion — XP (+ optional points) via rewards engine. */
+  const completeMission = async (stepId: string) => {
+    if (!authUser?.id) return null;
+
+    const result = await completeJourneyStepAction(authUser.id, stepId);
+    if (result?.success) {
+      await fetchStats();
+    }
+    return result;
   };
 
   return {
     userStats,
     isLoading,
-    addXp,
-    addPoints,
     completeQuest,
     completeMission,
     refreshStats: fetchStats,

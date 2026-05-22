@@ -21,7 +21,7 @@ interface AuthContextType {
     password: string
   ) => Promise<{ success: boolean; error?: string; role?: "admin" | "user" }>;
   signup: (userData: UserData & { password: string }) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -48,7 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const supabase = createClient();
 
-  const getProfileRole = async (userId: string): Promise<"admin" | "user"> => {
+  const getProfileRole = async (userId: string): Promise<string> => {
     const { data, error } = await supabase
       .from("users")
       .select("role")
@@ -56,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .maybeSingle();
 
     if (error) return "user";
-    return data?.role === "admin" ? "admin" : "user";
+    return data?.role ?? "user";
   };
 
   const syncUserProfile = async (authUser: User) => {
@@ -161,6 +161,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
   };
 
   return (

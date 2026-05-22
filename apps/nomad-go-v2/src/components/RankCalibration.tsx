@@ -11,13 +11,17 @@ interface RankCalibrationProps {
 }
 
 const rankImages: Record<string, string> = {
+  Otgon: "/rank-nomad.png",
+  Zamchin: "/rank-nomad.png",
+  Aduuchin: "/rank-nomad.png",
+  Nuudelchin: "/rank-great-khan.png",
+  "Zam Medegch": "/rank-great-khan.png",
+  "Talyn Khun": "/rank-great-khan.png",
+  Suldetei: "/rank-great-khan.png",
+  Noyon: "/rank-great-khan.png",
+  Khan: "/rank-great-khan.png",
   Nomad: "/rank-nomad.png",
   Scout: "/rank-nomad.png",
-  Rider: "/rank-great-khan.png",
-  "Steppe Warrior": "/rank-great-khan.png",
-  Warlord: "/rank-great-khan.png",
-  Khan: "/rank-great-khan.png",
-  "Great Khan": "/rank-great-khan.png",
 };
 
 export default function RankCalibration({

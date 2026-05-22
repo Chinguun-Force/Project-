@@ -47,6 +47,7 @@ export async function getJourneyDays() {
 export async function createMission(payload: {
   title: string;
   description: string;
+  imageUrl?: string;
   xpReward: number;
   latitude: number;
   longitude: number;
@@ -56,6 +57,7 @@ export async function createMission(payload: {
   const { error } = await supabase.from("missions").insert({
     title: payload.title,
     description: payload.description,
+    image_url: payload.imageUrl?.trim() || null,
     xp_reward: payload.xpReward,
     latitude: payload.latitude,
     longitude: payload.longitude,
