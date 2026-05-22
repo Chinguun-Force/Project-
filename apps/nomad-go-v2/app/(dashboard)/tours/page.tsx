@@ -1,51 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
 import { getToursAction } from "@/app/actions/gameActions";
-import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import {
-  Trophy,
-  Clock,
-  TrendingUp,
-  Star,
-  Route,
-  Zap,
-  ChevronRight,
-  Plus,
-} from "lucide-react";
+import { Calendar, Clock, MapPin, Loader2, ArrowRight } from "lucide-react";
 
-interface TourPlan {
-  id: string;
-  title: string;
-  description: string;
-  imageUrl: string;
-  difficulty: string;
-  totalXp: number;
-  estimatedDuration: number;
-  missionsCount: number;
-}
-
-const difficultyColors: Record<string, string> = {
-  easy: "bg-[#A8C69F]/20 text-[#A8C69F] border-[#A8C69F]/30",
-  medium: "bg-[#F2994A]/20 text-[#F2994A] border-[#F2994A]/30",
-  hard: "bg-red-500/20 text-red-400 border-red-500/30",
-};
-
-const tourImages: Record<number, string> = {
-  1: "/quest-steppe.jpg",
-  2: "/quest-terelj.jpg",
-  3: "/quest-ulanbaatar.jpg",
-  4: "/quest-naadam.jpg",
-  5: "/quest-gps.jpg",
-  6: "/quest-dumplings.jpg",
-};
-
-  export default function TourPlansPage() {
-  const { user } = useAuth();
+export default function TourPlansPage() {
   const router = useRouter();
 
-  const [tours, setTours] = useState<TourPlan[]>([]);
+  const [tours, setTours] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -59,164 +21,108 @@ const tourImages: Record<number, string> = {
     fetchTours();
   }, []);
 
-  const isModerator =
-    user?.user_metadata?.role === "moderator" ||
-    user?.user_metadata?.role === "admin";
-
   return (
-    <div className="min-h-screen bg-[#1A1D26]">
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
-              <Trophy className="w-6 h-6 text-[#F4C64D]" />
-              Tour Plans
-            </h1>
-            <p className="text-sm text-[#A0A0B0]">
-              Curated expedition routes across Mongolia
-            </p>
-          </div>
-          {isModerator && (
-            <Button
-              onClick={() => router.push("/tours/create")}
-              className="bg-[#F4C64D] hover:bg-[#F4C64D]/90 text-[#1A1D26] font-semibold"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Create Tour
-            </Button>
-          )}
+    <div className="min-h-screen bg-background">
+      <div className="max-w-7xl mx-auto px-4 py-12">
+        <div className="mb-12">
+          <h1 className="text-4xl font-extrabold text-foreground mb-4">
+            Tour Marketplace
+          </h1>
+          <p className="text-lg text-muted-foreground max-w-2xl">
+            Discover curated expeditions and immersive experiences. Browse available tours below.
+          </p>
         </div>
 
-        {/* Stats Summary */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          <div className="bg-[#322F36]/80 rounded-xl p-4 border border-[#322F36]">
-            <div className="flex items-center gap-2 mb-1">
-              <Route className="w-4 h-4 text-[#A8C69F]" />
-              <span className="text-xs text-[#A0A0B0]">Total Tours</span>
-            </div>
-            <span className="text-2xl font-bold text-white font-mono-data">
-              {tours.length}
-            </span>
-          </div>
-          <div className="bg-[#322F36]/80 rounded-xl p-4 border border-[#322F36]">
-            <div className="flex items-center gap-2 mb-1">
-              <Zap className="w-4 h-4 text-[#F4C64D]" />
-              <span className="text-xs text-[#A0A0B0]">Avg XP</span>
-            </div>
-            <span className="text-2xl font-bold text-white font-mono-data">
-              {tours.length > 0
-                ? Math.round(tours.reduce((a, p) => a + p.totalXp, 0) / tours.length)
-                : 0}
-            </span>
-          </div>
-          <div className="bg-[#322F36]/80 rounded-xl p-4 border border-[#322F36]">
-            <div className="flex items-center gap-2 mb-1">
-              <TrendingUp className="w-4 h-4 text-[#F2994A]" />
-              <span className="text-xs text-[#A0A0B0]">Difficulty</span>
-            </div>
-            <span className="text-2xl font-bold text-white font-mono-data">
-              Mixed
-            </span>
-          </div>
-        </div>
-
-        {/* Tour Plan Cards */}
         {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={i}
-                className="bg-[#322F36] rounded-xl h-64 animate-pulse"
-              />
-            ))}
+          <div className="flex justify-center items-center py-24">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : tours.length === 0 ? (
+          <div className="text-center py-24 border border-border rounded-xl">
+            <MapPin className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-lg text-foreground font-medium mb-2">
+              No tours currently available
+            </p>
+            <p className="text-muted-foreground">Check back later for new expeditions.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {tours.map((plan, idx) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {tours.map((tour) => (
               <div
-                key={plan.id}
-                className="bg-[#322F36] rounded-xl border border-[#322F36] hover:border-[#F4C64D]/30 transition-all overflow-hidden group cursor-pointer"
-                onClick={() => router.push(`/tours/${plan.id}`)}
+                key={tour.id}
+                onClick={() => router.push(`/tours/${tour.id}`)}
+                className="group relative bg-card rounded-2xl border border-border overflow-hidden cursor-pointer hover:shadow-lg transition-all duration-300 flex flex-col"
               >
-                {/* Image Header */}
-                <div className="relative h-44 overflow-hidden">
-                  <img
-                    src={plan.imageUrl}
-                    alt={plan.title}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#322F36] via-transparent to-transparent" />
-
-                  {/* Difficulty Badge */}
-                  <div className="absolute top-3 left-3">
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider border ${
-                        difficultyColors[plan.difficulty] ??
-                        difficultyColors.medium
-                      }`}
-                    >
-                      {plan.difficulty}
-                    </span>
-                  </div>
-
-                  {/* Title */}
-                  <div className="absolute bottom-3 left-3 right-3">
-                    <h3 className="text-xl font-bold text-white mb-1">
-                      {plan.title}
-                    </h3>
-                    <p className="text-sm text-[#A0A0B0] line-clamp-1">
-                      {plan.description}
-                    </p>
-                  </div>
+                <div className="aspect-video relative overflow-hidden bg-muted">
+                  {tour.image_url ? (
+                    <img
+                      src={tour.image_url}
+                      alt={tour.name}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <MapPin className="w-8 h-8 text-muted-foreground" />
+                    </div>
+                  )}
                 </div>
 
-                {/* Stats */}
-                <div className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-1.5">
-                        <Zap className="w-3.5 h-3.5 text-[#F4C64D]" />
-                        <span className="text-xs font-mono-data text-[#F4C64D]">
-                          {plan.totalXp} XP
+                <div className="p-6 flex flex-col flex-grow">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xl font-bold text-foreground line-clamp-1">
+                      {tour.name}
+                    </h3>
+                    {tour.price && (
+                      <span className="text-lg font-bold text-foreground">
+                        ${tour.price}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <p className="text-muted-foreground line-clamp-2 mb-4 flex-grow">
+                    {tour.journey_data?.description || `Explore ${tour.location}`}
+                  </p>
+
+                  {tour.missions && tour.missions.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 mb-4">
+                      {tour.missions.slice(0, 3).map((mission: any, idx: number) => (
+                        <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1 bg-muted rounded-md border border-border text-xs font-medium text-foreground">
+                          {mission.image_url ? (
+                            <img src={mission.image_url} alt={mission.title} className="w-3.5 h-3.5 rounded-sm object-cover" />
+                          ) : (
+                            <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
+                          )}
+                          <span className="truncate max-w-[100px]">{mission.title}</span>
+                        </div>
+                      ))}
+                      {tour.missions.length > 3 && (
+                        <span className="text-xs text-muted-foreground font-medium ml-1">
+                          +{tour.missions.length - 3} more sights
                         </span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-[#A0A0B0]" />
-                        <span className="text-xs text-[#A0A0B0]">
-                          {plan.estimatedDuration}h
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Star className="w-3.5 h-3.5 text-[#A8C69F]" />
-                        <span className="text-xs text-[#A8C69F]">
-                          {plan.missionsCount} Missions
-                        </span>
-                      </div>
+                      )}
                     </div>
-                    <ChevronRight className="w-4 h-4 text-[#A0A0B0] group-hover:text-[#F4C64D] transition-colors" />
+                  )}
+
+                  <div className="flex items-center gap-4 text-sm text-muted-foreground pt-4 border-t border-border">
+                    {tour.duration_days && (
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-4 h-4" />
+                        <span>{tour.duration_days} Days</span>
+                      </div>
+                    )}
+                    {tour.start_date && (
+                      <div className="flex items-center gap-1.5">
+                        <Calendar className="w-4 h-4" />
+                        <span>{new Date(tour.start_date).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                    <div className="ml-auto">
+                       <ArrowRight className="w-4 h-4 text-foreground opacity-0 group-hover:opacity-100 transition-opacity -translate-x-2 group-hover:translate-x-0 transform" />
+                    </div>
                   </div>
                 </div>
               </div>
             ))}
-          </div>
-        )}
-
-        {tours.length === 0 && !isLoading && (
-          <div className="text-center py-16">
-            <Trophy className="w-12 h-12 text-[#322F36] mx-auto mb-4" />
-            <p className="text-lg text-[#A0A0B0] mb-2">
-              No tour plans available yet
-            </p>
-            {isModerator && (
-              <Button
-                onClick={() => router.push("/tours/create")}
-                variant="outline"
-                className="mt-4 border-[#F4C64D] text-[#F4C64D] hover:bg-[#F4C64D]/10"
-              >
-                Create the first tour plan
-              </Button>
-            )}
           </div>
         )}
       </div>

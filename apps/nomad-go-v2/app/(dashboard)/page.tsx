@@ -1,291 +1,403 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
-import Globe from "@/components/Globe";
-import XPProgressBar from "@/components/XPProgressBar";
-import EnergyCore from "@/components/EnergyCore";
-import RankCalibration from "@/components/RankCalibration";
-import FloatingGains from "@/components/FloatingGains";
-import QuestCard from "@/components/QuestCard";
-import { Button } from "@/components/ui/button";
-import {
-  MapPin,
-  Route,
-  Trophy,
-  Flame,
-  TrendingUp,
-  ChevronRight,
-} from "lucide-react";
+import { trpc } from "@/providers/trpc";
+import { Flame, MapPin, ChevronRight } from "lucide-react";
+import { getTouristActiveSessionAction, claimDailyCheckinAction, getUserProgressAction } from "@/app/actions/gameActions";
+import { toast } from "sonner";
+
+// Helper for Rank Calculation
+const getMongolianRank = (level: number) => {
+  if (level >= 46) return "Khan";
+  if (level >= 37) return "Noyon";
+  if (level >= 29) return "Suldtei";
+  if (level >= 22) return "Talyn Khun";
+  if (level >= 16) return "Zam Medegch";
+  if (level >= 11) return "Nuudelchin";
+  if (level >= 7) return "Aduuchin";
+  if (level >= 4) return "Zamchin";
+  return "Otgon"; // 1-3
+};
+
+// SVG for Knucklebone (Horse position)
+const ShagaiIcon = ({ className }: { className?: string }) => (
+  <svg 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="1.5" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+  >
+    <path d="M7 6C5 6 4 7 4 9C4 11 5 13 8 13C10 13 11 15 11 17C11 19 13 20 15 20C17 20 19 19 19 17C19 15 17 14 15 14C12 14 10 12 10 9C10 7 12 6 15 6C17 6 18 5 18 3C18 1.5 16 1.5 14 3C12 4.5 10 4 7 4" />
+  </svg>
+);
 
 export default function Dashboard() {
   const { user } = useAuth();
   const router = useRouter();
   const utils = trpc.useUtils();
 
-  const { data: progress } = trpc.progress.me.useQuery(undefined, {
-    enabled: !!user,
-  });
+  const [activeSession, setActiveSession] = useState<any>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState(true);
+  const [isCheckingIn, setIsCheckingIn] = useState(false);
 
-  const { data: quests } = trpc.quest.list.useQuery();
+  // Optimistic UI State
+  const [localXp, setLocalXp] = useState(0); // Total XP (optional, but keep for history if needed)
+  const [localCurrentXp, setLocalCurrentXp] = useState(0);
+  const [localLevel, setLocalLevel] = useState(1);
+  const [localXpThreshold, setLocalXpThreshold] = useState(1000);
+  const [localShagai, setLocalShagai] = useState(0);
+  const [isGlow, setIsGlow] = useState(false);
+  const [floatingLabels, setFloatingLabels] = useState<{id: number, text: string}[]>([]);
 
-  const seedMutation = trpc.progress.seed.useMutation({
-    onSuccess: () => {
-      utils.progress.me.invalidate();
-    },
-  });
-
-  const [showCalibration, setShowCalibration] = useState(false);
-  const [calibrationData, setCalibrationData] = useState<{
-    oldRank: string;
-    newRank: string;
-    newLevel: number;
-    newMultiplier: number;
-  } | null>(null);
-
-  const [floatingGains, setFloatingGains] = useState<{
-    xp: number;
-    points: number;
-  } | null>(null);
-
-  // Seed progress on first visit
+  // Load User Progress native
   useEffect(() => {
-    if (user && progress === undefined) {
-      seedMutation.mutate();
+    if (user && !isCheckingIn) {
+      getUserProgressAction(user.id).then(data => {
+        if (data) {
+          setLocalXp(data.totalXp);
+          setLocalCurrentXp(data.currentXp);
+          setLocalShagai(data.pointsBalance);
+          setLocalLevel(data.level);
+          setLocalXpThreshold(data.xpThreshold);
+        }
+      });
     }
-  }, [user, progress]);
+  }, [user, isCheckingIn]);
 
-  const handleQuestComplete = (result: {
-    xpEarned: number;
-    pointsEarned: number;
-    levelsGained: number;
-    newLevel: number;
-    newRank: string;
-    newMultiplier: number;
-  }) => {
-    setFloatingGains({
-      xp: result.xpEarned,
-      points: result.pointsEarned,
+  // Load Active Session
+  useEffect(() => {
+    if (user?.user_metadata?.session_id) {
+      getTouristActiveSessionAction(user.user_metadata.session_id).then(data => {
+        setActiveSession(data);
+        setIsLoadingSession(false);
+      });
+    } else {
+      setIsLoadingSession(false);
+    }
+  }, [user]);
+
+  const triggerRewardAnimation = (xpReward: number, shagaiReward: number) => {
+    // 1. Instantly trigger smooth optimistic UI increments
+    setLocalXp(prev => prev + xpReward);
+    
+    // Quick optimistic math for level up
+    setLocalCurrentXp(prev => {
+      let newCurrent = prev + xpReward;
+      let newThreshold = localXpThreshold;
+      let newLevel = localLevel;
+      while (newCurrent >= newThreshold) {
+        newCurrent -= newThreshold;
+        newLevel++;
+        newThreshold += 500;
+      }
+      if (newLevel > localLevel) {
+        setLocalLevel(newLevel);
+        setLocalXpThreshold(newThreshold);
+      }
+      return newCurrent;
     });
 
-    if (result.levelsGained > 0) {
-      setCalibrationData({
-        oldRank: progress?.currentRank ?? "Nomad",
-        newRank: result.newRank,
-        newLevel: result.newLevel,
-        newMultiplier: result.newMultiplier,
-      });
-      setShowCalibration(true);
-    }
+    setLocalShagai(prev => prev + shagaiReward);
+    setIsGlow(true);
 
-    utils.progress.me.invalidate();
-    utils.quest.getUserCompletions.invalidate();
+    // 2. Spawn the custom floating text nodes (+XP, +Shagai) near the profile card
+    const id = Date.now();
+    setFloatingLabels(prev => [
+      ...prev,
+      { id: id + 1, text: `+${xpReward} XP` },
+      { id: id + 2, text: `+${shagaiReward} Shagai` }
+    ]);
+
+    setTimeout(() => setIsGlow(false), 1500);
+    setTimeout(() => {
+      setFloatingLabels(prev => prev.filter(l => l.id !== id + 1 && l.id !== id + 2));
+    }, 1500);
   };
 
-  const handleCalibrationComplete = () => {
-    setShowCalibration(false);
-    setCalibrationData(null);
+  const handleDailyCheckIn = async () => {
+    if (!user || isCheckingIn) return;
+    setIsCheckingIn(true);
+    
+    // Optimistic Multiplier Math
+    const baseXp = 10;
+    const basePoints = 5;
+    const optimisticPoints = Math.floor(basePoints * (1 + (localLevel * 0.05)));
+    const optimisticXp = baseXp; // No level-based scaling for XP
+
+    // Optimistic Update
+    triggerRewardAnimation(optimisticXp, optimisticPoints);
+
+    const res = await claimDailyCheckinAction(user.id);
+    if (res.success) {
+      // Re-fetch native data in background to stay synced
+      getUserProgressAction(user.id).then(data => {
+        if (data) {
+          setLocalXp(data.totalXp);
+          setLocalCurrentXp(data.currentXp);
+          setLocalShagai(data.pointsBalance);
+          setLocalLevel(data.level);
+          setLocalXpThreshold(data.xpThreshold);
+        }
+      });
+      router.refresh();
+    } else {
+      toast.error("Could not tend the fire. Please try again.");
+      // Rollback on failure
+      getUserProgressAction(user.id).then(data => {
+        if (data) {
+          setLocalXp(data.totalXp);
+          setLocalCurrentXp(data.currentXp);
+          setLocalShagai(data.pointsBalance);
+          setLocalLevel(data.level);
+          setLocalXpThreshold(data.xpThreshold);
+        }
+      });
+    }
+    setIsCheckingIn(false);
   };
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#1A1D26]">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-white mb-4">
-            Welcome to <span className="text-[#F4C64D]">Nomad-Go</span>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center animate-fade-in">
+          <h1 className="text-3xl font-bold text-foreground mb-4">
+            Welcome to <span className="text-emerald-400 drop-shadow-[0_0_15px_rgba(52,211,153,0.3)]">Nomad-Go</span>
           </h1>
-          <p className="text-[#A0A0B0] mb-6">
-            Your adventure across Mongolia begins here.
-          </p>
-          <Button
+          <button
             onClick={() => router.push("/login")}
-            className="bg-[#F4C64D] hover:bg-[#F4C64D]/90 text-[#1A1D26] font-semibold px-8 py-3"
+            className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-8 py-3 rounded-xl transition-all"
           >
             Begin Your Journey
-          </Button>
+          </button>
         </div>
       </div>
     );
   }
 
+  const currentTotalXp = localXp;
+  const currentLevelRelativeXp = localCurrentXp;
+  const currentLevel = localLevel;
+  const currentRank = getMongolianRank(currentLevel);
+  const availablePoints = localShagai;
+  
+  // Progress Bar Logic
+  const percentage = Math.min(100, Math.max(0, (currentLevelRelativeXp / localXpThreshold) * 100));
+
+  // Current journey day (default to Day 1 for timeline)
+  const currentDay = activeSession?.journey_days?.[0];
+
   return (
-    <div className="relative min-h-screen">
-      {/* 3D Globe Background */}
-      <div className="fixed inset-0 z-0 opacity-40">
-        <Globe />
-      </div>
-
-      {/* Rank Calibration Overlay */}
-      {showCalibration && calibrationData && (
-        <RankCalibration
-          oldRank={calibrationData.oldRank}
-          newRank={calibrationData.newRank}
-          newLevel={calibrationData.newLevel}
-          newMultiplier={calibrationData.newMultiplier}
-          onComplete={handleCalibrationComplete}
-        />
-      )}
-
-      {/* Floating Gains */}
-      {floatingGains && (
-        <FloatingGains
-          xpGained={floatingGains.xp}
-          pointsGained={floatingGains.points}
-        />
-      )}
-
-      {/* Main Content */}
-      <div className="relative z-10 max-w-7xl mx-auto px-4 py-6">
-        {/* Hero Stats Section */}
-        <div className="mb-8">
-          <div className="flex flex-col lg:flex-row gap-6 items-start">
-            {/* Left: Player Info */}
-            <div className="flex-1">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="relative">
-                  <img
-                    src={(user.user_metadata?.avatar_url as string) ?? "/rank-nomad.png"}
-                    alt="avatar"
-                    className="w-16 h-16 rounded-full border-2 border-[#F4C64D]/40 object-cover"
-                  />
-                  <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#F4C64D] flex items-center justify-center">
-                    <span className="text-[10px] font-bold text-[#1A1D26]">
-                      {progress?.currentLevel ?? 1}
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-white">
-                    {(user.user_metadata?.playerName || user.user_metadata?.full_name || user.email?.split('@')[0]) ?? "Nomad"}
-                  </h1>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="text-sm font-semibold text-[#F4C64D]"
-                      style={{
-                        textShadow: "0 0 10px rgba(244, 198, 77, 0.3)",
-                      }}
-                    >
-                      {progress?.currentRank ?? "Nomad"}
-                    </span>
-                    <span className="text-xs text-[#A0A0B0]">
-                      x{progress?.multiplier ?? 1} Multiplier
-                    </span>
-                  </div>
+    <div className="min-h-screen bg-background text-foreground pb-20">
+      <style>{`
+        @keyframes floatUp {
+          0% { transform: translateY(0); opacity: 1; }
+          100% { transform: translateY(-30px); opacity: 0; }
+        }
+        .animate-float-up {
+          animation: floatUp 1.5s ease-out forwards;
+        }
+      `}</style>
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        
+        {/* TOP SECTION: User Profile & Shagai Wallet */}
+        <div className="flex justify-between items-start mb-8">
+          <div className="flex flex-col flex-1 max-w-sm mr-8">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <img
+                  src={(user.user_metadata?.avatar_url as string) ?? "/rank-nomad.png"}
+                  alt="avatar"
+                  className="w-16 h-16 rounded-full border-2 border-border object-cover bg-card shadow-lg"
+                  onError={(e) => { e.currentTarget.src = "/rank-nomad.png"; }}
+                />
+              </div>
+              <div className="flex-1">
+                <h1 className="text-2xl font-bold text-foreground tracking-tight line-clamp-1">
+                  {(user.user_metadata?.playerName || user.user_metadata?.full_name || user.email?.split('@')[0]) ?? "Explorer"}
+                </h1>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-sm font-semibold text-emerald-400 tracking-wide uppercase">
+                    Lv.{currentLevel} • {currentRank}
+                  </span>
                 </div>
               </div>
-
-              {/* XP Progress */}
-              <div className="bg-[#322F36]/80 backdrop-blur-sm rounded-xl p-4 border border-[#322F36]">
-                <XPProgressBar
-                  current={progress?.totalXp ?? 0}
-                  max={progress?.xpToNextLevel ?? 300}
-                  level={progress?.currentLevel ?? 1}
+            </div>
+            
+            {/* XP Progress Bar */}
+            <div className="w-full mt-4">
+              <div className="flex justify-between text-xs text-muted-foreground mb-1.5 font-medium">
+                <span>{currentLevelRelativeXp.toLocaleString()} XP</span>
+                <span>{localXpThreshold.toLocaleString()} XP</span>
+              </div>
+              <div className={`h-2 w-full bg-[#1F222A] rounded-full overflow-hidden transition-shadow duration-500 ${isGlow ? 'shadow-[0_0_20px_rgba(16,185,129,0.5)]' : ''}`}>
+                <div 
+                  className="h-full bg-emerald-500 rounded-full shadow-[0_0_10px_rgba(52,211,153,0.5)] transition-all duration-500 ease-out" 
+                  style={{ width: `${percentage}%` }}
                 />
               </div>
             </div>
+          </div>
 
-            {/* Right: Stats Grid */}
-            <div className="flex flex-row gap-4 items-start">
-              <EnergyCore
-                points={progress?.pointsBalance ?? 0}
-                maxPoints={1000}
-                size="lg"
-              />
-              <div className="flex flex-col gap-3">
-                <div className="bg-[#322F36]/80 backdrop-blur-sm rounded-lg px-4 py-2.5 border border-[#322F36]">
-                  <div className="flex items-center gap-2">
-                    <Flame className="w-4 h-4 text-[#F2994A]" />
-                    <span className="text-xs text-[#A0A0B0]">Streak</span>
-                  </div>
-                  <span className="text-lg font-bold text-white font-mono-data">
-                    {progress?.streakDays ?? 0}d
-                  </span>
-                </div>
-                <div className="bg-[#322F36]/80 backdrop-blur-sm rounded-lg px-4 py-2.5 border border-[#322F36]">
-                  <div className="flex items-center gap-2">
-                    <Trophy className="w-4 h-4 text-[#F4C64D]" />
-                    <span className="text-xs text-[#A0A0B0]">Quests</span>
-                  </div>
-                  <span className="text-lg font-bold text-white font-mono-data">
-                    {progress?.questsCompleted ?? 0}
-                  </span>
-                </div>
+          {/* Shagai Pill */}
+          <div className={`relative bg-card border border-border rounded-2xl px-5 py-3 flex flex-col items-end transition-shadow duration-500 ${isGlow ? 'shadow-[0_0_20px_rgba(16,185,129,0.5)] border-emerald-500/50' : 'shadow-sm'}`}>
+            
+            {/* Floating Labels */}
+            {floatingLabels.map((label, index) => (
+              <div key={label.id} className="absolute -top-6 text-emerald-400 font-bold text-sm z-50 animate-float-up whitespace-nowrap" style={{ right: index === 0 ? '1rem' : '4rem', top: index === 0 ? '-1.5rem' : '-2.5rem' }}>
+                {label.text}
+              </div>
+            ))}
+
+            <div className="flex items-center gap-3">
+              <span className="text-2xl font-bold font-mono text-emerald-400 tracking-tighter transition-all duration-500">
+                {availablePoints.toLocaleString()}
+              </span>
+              <ShagaiIcon className={`w-8 h-8 text-emerald-400 transition-all duration-500 ${isGlow ? 'drop-shadow-[0_0_20px_rgba(16,185,129,0.8)] scale-110' : 'drop-shadow-[0_0_10px_rgba(52,211,153,0.4)]'}`} />
+            </div>
+            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest mt-1">
+              My Shagai
+            </span>
+          </div>
+        </div>
+
+        {/* MIDDLE SECTION: Road Blessing */}
+        <div className="mb-10">
+          <button 
+            onClick={handleDailyCheckIn}
+            disabled={isCheckingIn}
+            className="w-full relative overflow-hidden group rounded-3xl bg-card border border-border p-6 md:p-8 flex items-center justify-between transition-all hover:border-emerald-500/50 hover:shadow-[0_0_40px_rgba(52,211,153,0.1)] text-left disabled:opacity-50"
+          >
+            <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="flex items-center gap-5 relative z-10">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 group-hover:scale-110 transition-transform duration-500">
+                <Flame className="w-8 h-8 text-emerald-400 animate-pulse" />
+              </div>
+              <div>
+                <h2 className="text-xl md:text-2xl font-bold text-foreground">Road Blessing</h2>
+                <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                  Tend your campfire daily to gain journey power and bonus rewards.
+                </p>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-          <button
-            onClick={() => router.push("/quests")}
-            className="bg-[#322F36]/80 backdrop-blur-sm rounded-xl p-4 border border-[#322F36] hover:border-[#F4C64D]/40 transition-all group text-left"
-          >
-            <MapPin className="w-6 h-6 text-[#A8C69F] mb-2 group-hover:scale-110 transition-transform" />
-            <p className="text-sm font-medium text-white">Quests</p>
-            <p className="text-xs text-[#A0A0B0]">{quests?.length ?? 0} available</p>
-          </button>
-          <button
-            onClick={() => router.push("/missions")}
-            className="bg-[#322F36]/80 backdrop-blur-sm rounded-xl p-4 border border-[#322F36] hover:border-[#F4C64D]/40 transition-all group text-left"
-          >
-            <Route className="w-6 h-6 text-[#F2994A] mb-2 group-hover:scale-110 transition-transform" />
-            <p className="text-sm font-medium text-white">Missions</p>
-            <p className="text-xs text-[#A0A0B0]">Explore locations</p>
-          </button>
-          <button
-            onClick={() => router.push("/tours")}
-            className="bg-[#322F36]/80 backdrop-blur-sm rounded-xl p-4 border border-[#322F36] hover:border-[#F4C64D]/40 transition-all group text-left"
-          >
-            <TrendingUp className="w-6 h-6 text-[#F4C64D] mb-2 group-hover:scale-110 transition-transform" />
-            <p className="text-sm font-medium text-white">Tour Plans</p>
-            <p className="text-xs text-[#A0A0B0]">Curated journeys</p>
-          </button>
-          <button
-            onClick={() => {
-              utils.progress.me.invalidate();
-            }}
-            className="bg-[#322F36]/80 backdrop-blur-sm rounded-xl p-4 border border-[#322F36] hover:border-[#F4C64D]/40 transition-all group text-left"
-          >
-            <Flame className="w-6 h-6 text-[#A8C69F] mb-2 group-hover:scale-110 transition-transform" />
-            <p className="text-sm font-medium text-white">Daily Check-in</p>
-            <p className="text-xs text-[#A0A0B0]">Claim bonus XP</p>
+            <div className="hidden md:flex items-center text-emerald-400 font-medium bg-emerald-500/10 px-4 py-2 rounded-full relative z-10 group-hover:bg-emerald-500/20 transition-colors">
+              {isCheckingIn ? "Tending..." : "Tend Fire"} <ChevronRight className="w-4 h-4 ml-1" />
+            </div>
           </button>
         </div>
 
-        {/* Featured Quests */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <MapPin className="w-5 h-5 text-[#F4C64D]" />
-              Active Quests
-            </h2>
-            <Button
-              variant="ghost"
-              onClick={() => router.push("/quests")}
-              className="text-[#F4C64D] hover:text-[#F4C64D]/80 hover:bg-[#F4C64D]/10 text-sm"
-            >
-              View All
-              <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {quests?.slice(0, 6).map((quest) => (
-              <QuestCard
-                key={quest.id}
-                id={quest.id}
-                title={quest.title}
-                description={quest.description}
-                basePoints={quest.basePoints}
-                logicType={quest.logicType}
-                category={quest.category}
-                imageUrl={quest.imageUrl}
-                onComplete={handleQuestComplete}
-              />
-            ))}
+        {/* BOTTOM SECTION: Active Journey Hub */}
+        <div className="space-y-4">
+          <h2 className="text-xl font-bold text-foreground tracking-tight">Active Journey</h2>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* Left Column: Current Journey */}
+            <div className="lg:col-span-2 bg-card border border-border rounded-3xl p-6">
+              {isLoadingSession ? (
+                <div className="animate-pulse flex flex-col gap-4">
+                  <div className="h-6 w-1/3 bg-muted rounded"></div>
+                  <div className="h-4 w-1/4 bg-muted rounded"></div>
+                  <div className="mt-6 space-y-4">
+                    <div className="h-12 bg-muted rounded-xl"></div>
+                    <div className="h-12 bg-muted rounded-xl"></div>
+                  </div>
+                </div>
+              ) : activeSession ? (
+                <div>
+                  <div className="flex items-start justify-between mb-8">
+                    <div>
+                      <h3 className="text-2xl font-bold text-foreground">{activeSession.name}</h3>
+                      <div className="flex items-center gap-1.5 text-muted-foreground mt-2">
+                        <MapPin className="w-4 h-4" />
+                        <span className="text-sm font-medium">{activeSession.location}</span>
+                      </div>
+                    </div>
+                    <div className="bg-muted text-muted-foreground text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                      Day {currentDay?.day_number || 1}
+                    </div>
+                  </div>
+
+                  {/* Vertical Timeline */}
+                  <div className="relative border-l-2 border-border ml-3 pl-6 space-y-8">
+                    {!currentDay?.journey_steps || currentDay.journey_steps.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-4 italic">No steps scheduled for today.</p>
+                    ) : (
+                      currentDay.journey_steps.map((step: any) => (
+                        <div key={step.id} className="relative group">
+                          {/* Bullet point */}
+                          <div className="absolute -left-[31px] top-1 w-3 h-3 rounded-full border-2 border-card bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]" />
+                          
+                          <div className="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4">
+                            <span className="font-mono text-sm font-bold text-emerald-400 w-20 shrink-0">
+                              {step.time_slot}
+                            </span>
+                            <div>
+                              <h4 className="font-semibold text-foreground text-lg">{step.title}</h4>
+                              {step.description && (
+                                <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                                  {step.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  
+                  <button 
+                    onClick={() => router.push(`/tours/${activeSession.id}`)}
+                    className="mt-8 w-full py-3 bg-muted hover:bg-emerald-500/10 hover:text-emerald-400 text-foreground text-sm font-medium rounded-xl transition-colors border border-transparent hover:border-emerald-500/20"
+                  >
+                    View Full Itinerary
+                  </button>
+                </div>
+              ) : (
+                <div className="h-full min-h-[300px] flex flex-col items-center justify-center text-center">
+                  <MapPin className="w-12 h-12 text-muted-foreground mb-4 opacity-50" />
+                  <p className="font-semibold text-foreground text-lg mb-1">You have no active journey right now.</p>
+                  <p className="text-sm text-muted-foreground max-w-sm mb-6">
+                    Enter your exclusive invitation code provided by your tour operator to unlock your itinerary.
+                  </p>
+                  <button
+                    onClick={() => router.push('/tours')}
+                    className="bg-foreground text-background font-semibold px-6 py-2.5 rounded-xl hover:bg-foreground/90 transition-colors"
+                  >
+                    Find Journeys
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Right Column: Redeem Bridge */}
+            <div className="lg:col-span-1">
+              <button 
+                onClick={() => router.push('/profile/redeem')}
+                className="w-full h-full min-h-[250px] relative overflow-hidden group rounded-3xl bg-card border border-border p-6 flex flex-col items-center justify-center text-center transition-all hover:border-emerald-500/50"
+              >
+                <div className="absolute inset-0 bg-emerald-500/5 group-hover:bg-emerald-500/10 transition-colors duration-500" />
+                <div className="relative z-10 flex flex-col items-center">
+                  <div className="w-20 h-20 mb-6 relative">
+                    <div className="absolute inset-0 bg-emerald-400 blur-xl opacity-20 group-hover:opacity-40 transition-opacity" />
+                    <ShagaiIcon className="w-full h-full text-emerald-400 relative z-10" />
+                  </div>
+                  <h3 className="text-xl font-bold text-foreground mb-3 leading-tight max-w-[200px]">
+                    Redeem Shagai for Exclusive Rewards
+                  </h3>
+                  <div className="flex items-center text-sm font-medium text-emerald-400 bg-emerald-500/10 px-5 py-2 rounded-full group-hover:bg-emerald-500/20 transition-colors">
+                    Explore Rewards <ChevronRight className="w-4 h-4 ml-1" />
+                  </div>
+                </div>
+              </button>
+            </div>
+
           </div>
         </div>
+
       </div>
     </div>
   );

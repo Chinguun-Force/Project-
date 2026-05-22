@@ -217,29 +217,6 @@ export default function Quests() {
             Complete quests to earn XP and points across Mongolia
           </p>
         </div>
-
-        {/* Player Stats Bar */}
-        {userStats && (
-          <div className="bg-[#322F36]/80 backdrop-blur-sm rounded-xl p-4 border border-[#322F36] mb-6 flex flex-col md:flex-row items-center gap-4">
-            <div className="flex-1 w-full">
-              <XPProgressBar
-                current={userStats.currentXp ?? 0}
-                max={userStats.xpThreshold ?? 1000}
-                level={userStats.level ?? 1}
-              />
-            </div>
-            <div className="flex items-center gap-4">
-              <EnergyCore points={userStats.points ?? 0} size="sm" />
-              <div className="text-right">
-                <p className="text-xs text-[#A0A0B0]">Rank</p>
-                <p className="text-sm font-bold text-[#10B981]">
-                  Level {userStats.level ?? 1}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Search & Filters */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
           <div className="relative flex-1">
