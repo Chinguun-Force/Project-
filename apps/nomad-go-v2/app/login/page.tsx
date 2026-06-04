@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { Spinner } from "@/components/ui/spinner";
+import { getPostLoginPath } from "@/lib/auth/roles";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -26,14 +27,14 @@ export default function Login() {
     }
     
     setLoading(true);
-    const { error, success } = await login(email, password);
+    const { error, success, role } = await login(email, password);
     setLoading(false);
 
     if (error) {
       toast.error(error);
     } else if (success) {
       toast.success("Successfully logged in");
-      router.push("/");
+      router.push(getPostLoginPath(role));
     }
   };
 

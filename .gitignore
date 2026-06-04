@@ -56,3 +56,6 @@ out
 
 vite.config.*.timestamp*
 vitest.config.*.timestamp*
+.cursorrules
+.AGENTS.md
+.SDD.md

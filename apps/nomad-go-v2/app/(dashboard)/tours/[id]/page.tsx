@@ -1,20 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
-import { getTourDetailsAction, enrollTourAction } from "@/app/actions/gameActions";
+import { getTourDetailsAction } from "@/app/actions/gameActions";
 import { useAuth } from "@/hooks/useAuth";
 import { useParams, useRouter } from "next/navigation";
-import {
-  Calendar,
-  Clock,
-  MapPin,
-  Mail,
-  Phone,
-  MessageCircle,
-  Lock,
-  Key,
-} from "lucide-react";
+import { Calendar, Clock, MapPin, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import TourItinerary from "@/components/nomad/TourItinerary";
 
@@ -26,27 +16,6 @@ export default function TourDetailsPage() {
 
   const [tour, setTour] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [inviteCode, setInviteCode] = useState("");
-  const [enrollLoading, setEnrollLoading] = useState(false);
-  const [enrollError, setEnrollError] = useState("");
-
-  const handleEnroll = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inviteCode.trim()) return;
-
-    setEnrollError("");
-    setEnrollLoading(true);
-    const res = await enrollTourAction(inviteCode, id);
-    if (res?.error) {
-      setEnrollError(res.error);
-    } else {
-      const data = await getTourDetailsAction(id);
-      setTour(data);
-      router.refresh();
-    }
-    setEnrollLoading(false);
-  };
-
   useEffect(() => {
     const fetchTour = async () => {
       setIsLoading(true);
@@ -84,8 +53,13 @@ export default function TourDetailsPage() {
     );
   }
 
-  const isEnrolled = user?.user_metadata?.session_id === tour.id;
-  const publicMissions = tour.missions || [];
+  const isTripTemplate = tour.isTripTemplate !== false;
+  const activeRoomId = user?.user_metadata?.room_id as string | undefined;
+  const isEnrolled = Boolean(activeRoomId);
+  const publicMissions = [...(tour.missions || [])].sort(
+    (a: { xp_reward?: number }, b: { xp_reward?: number }) =>
+      (b.xp_reward ?? 0) - (a.xp_reward ?? 0),
+  );
   const journeyDays = tour.journey_days || [];
 
   return (
@@ -140,8 +114,15 @@ export default function TourDetailsPage() {
         <div className="mb-12">
           <h2 className="text-2xl font-bold text-foreground mb-4">Overview</h2>
           <p className="text-lg text-muted-foreground leading-relaxed mb-8">
-            {`Join us for an unforgettable experience in ${tour.location || "Mongolia"}.`}
+            {tour.description ||
+              `Join us for an unforgettable experience in ${tour.location || "Mongolia"}.`}
           </p>
+          {isTripTemplate && (
+            <p className="text-sm text-[#F4C64D]/90 mb-6">
+              This is a tour template — sights below are missions you can complete for XP when
+              you join a departure (room code from your guide).
+            </p>
+          )}
 
           {publicMissions.length > 0 && (
             <div className="mb-12">
@@ -179,7 +160,7 @@ export default function TourDetailsPage() {
             <h2 className="text-2xl font-bold text-foreground">Tour Agenda</h2>
             {!isEnrolled && (
               <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
-                Preview — enroll to unlock live quests
+                Template preview — join with your room code on Home
               </span>
             )}
           </div>
@@ -190,69 +171,16 @@ export default function TourDetailsPage() {
           <div className="rounded-2xl border-2 border-dashed border-border p-8 md:p-12 text-center bg-card">
             <Lock className="w-12 h-12 text-muted-foreground mx-auto mb-6" />
             <h3 className="text-2xl font-bold text-foreground mb-4">
-              Unlock This Expedition
+              Join your live group
             </h3>
             <p className="text-muted-foreground mb-8 max-w-lg mx-auto">
-              Enter your invite code to join this tour and access live GPS quests.
+              Your tour operator creates a room for each departure and gives you a unique
+              expedition code. Enter it on your Home dashboard to unlock the live itinerary
+              and GPS quests.
             </p>
-
-            <form onSubmit={handleEnroll} className="max-w-md mx-auto mb-12">
-              <div className="flex gap-2">
-                <div className="relative flex-grow">
-                  <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <input
-                    type="text"
-                    placeholder="Enter Invite Code"
-                    value={inviteCode}
-                    onChange={(e) => setInviteCode(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                    disabled={enrollLoading}
-                  />
-                </div>
-                <Button type="submit" disabled={enrollLoading || !inviteCode.trim()}>
-                  {enrollLoading ? (
-                    <Spinner className="w-4 h-4 text-[#1A1D26]" />
-                  ) : (
-                    "Unlock"
-                  )}
-                </Button>
-              </div>
-              {enrollError && (
-                <p className="text-destructive text-sm mt-2 text-left">{enrollError}</p>
-              )}
-            </form>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl mx-auto">
-              {tour.contact_email && (
-                <a
-                  href={`mailto:${tour.contact_email}`}
-                  className="flex flex-col items-center justify-center p-6 rounded-xl bg-muted hover:bg-muted/80 transition-colors"
-                >
-                  <Mail className="w-6 h-6 text-foreground mb-3" />
-                  <span className="text-sm font-medium text-foreground">Email Us</span>
-                </a>
-              )}
-              {tour.contact_phone && (
-                <a
-                  href={`tel:${tour.contact_phone}`}
-                  className="flex flex-col items-center justify-center p-6 rounded-xl bg-muted hover:bg-muted/80 transition-colors"
-                >
-                  <Phone className="w-6 h-6 text-foreground mb-3" />
-                  <span className="text-sm font-medium text-foreground">Call Us</span>
-                </a>
-              )}
-              {tour.viber_link && (
-                <a
-                  href={tour.viber_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex flex-col items-center justify-center p-6 rounded-xl bg-muted hover:bg-muted/80 transition-colors"
-                >
-                  <MessageCircle className="w-6 h-6 text-foreground mb-3" />
-                  <span className="text-sm font-medium text-foreground">Viber Chat</span>
-                </a>
-              )}
-            </div>
+            <Button type="button" onClick={() => router.push("/")}>
+              Go to Home — Join expedition
+            </Button>
           </div>
         )}
       </div>

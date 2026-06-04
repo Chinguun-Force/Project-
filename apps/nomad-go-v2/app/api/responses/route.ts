@@ -201,25 +201,19 @@ export async function POST(req: Request) {
   }
 }
 
-// GET /api/responses?sessionId=... - Get user's responses for a specific session
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const sessionId = searchParams.get('sessionId');
-
-  if (!sessionId) {
-    return NextResponse.json({ error: 'sessionId is required' }, { status: 400 });
-  }
-
+// GET /api/responses — user's quest responses (sessionId query deprecated, ignored)
+export async function GET() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data: responses, error } = await supabase
-    .from('quest_responses')
-    .select('*, quests!inner(session_id)')
-    .eq('user_id', user.id)
-    .eq('quests.session_id', sessionId);
+    .from("quest_responses")
+    .select("*")
+    .eq("user_id", user.id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 

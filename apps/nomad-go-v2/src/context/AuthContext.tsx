@@ -3,6 +3,11 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { User } from "@supabase/supabase-js";
+import {
+  PROFILES_TABLE,
+  toLegacyUserRole,
+  toProfileRole,
+} from "@/lib/auth/profile";
 
 export interface UserData {
   email: string;
@@ -19,7 +24,7 @@ interface AuthContextType {
   login: (
     email: string,
     password: string
-  ) => Promise<{ success: boolean; error?: string; role?: "admin" | "user" }>;
+  ) => Promise<{ success: boolean; error?: string; role?: string }>;
   signup: (userData: UserData & { password: string }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   isLoading: boolean;
@@ -50,13 +55,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const getProfileRole = async (userId: string): Promise<string> => {
     const { data, error } = await supabase
-      .from("users")
+      .from(PROFILES_TABLE)
       .select("role")
       .eq("id", userId)
       .maybeSingle();
 
-    if (error) return "user";
-    return data?.role ?? "user";
+    if (error) return "tourist";
+    const role = data?.role ?? "tourist";
+    return role === "tourist" ? "user" : role;
   };
 
   const syncUserProfile = async (authUser: User) => {
@@ -64,19 +70,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (authUser.user_metadata?.playerName as string | undefined) ||
       (authUser.user_metadata?.full_name as string | undefined) ||
       (authUser.email ? authUser.email.split("@")[0] : "Traveler");
-    const existingRole = await getProfileRole(authUser.id);
 
-    const { error } = await supabase.from("users").upsert(
+    const { data: existingProfile } = await supabase
+      .from(PROFILES_TABLE)
+      .select("role, tenant_id")
+      .eq("id", authUser.id)
+      .maybeSingle();
+
+    const profileRole = toProfileRole(existingProfile?.role ?? "tourist");
+    const legacyRole = toLegacyUserRole(profileRole);
+
+    const profileError = existingProfile
+      ? (
+          await supabase
+            .from(PROFILES_TABLE)
+            .update({ full_name: fullName })
+            .eq("id", authUser.id)
+        ).error
+      : (
+          await supabase.from(PROFILES_TABLE).insert({
+            id: authUser.id,
+            role: profileRole,
+            full_name: fullName,
+            tenant_id: null,
+          })
+        ).error;
+
+    const { error: usersError } = await supabase.from("users").upsert(
       {
         id: authUser.id,
         full_name: fullName,
         email: authUser.email ?? "",
-        role: existingRole,
+        role: legacyRole,
       },
       { onConflict: "id" },
     );
 
-    return error;
+    return profileError ?? usersError;
   };
 
   useEffect(() => {

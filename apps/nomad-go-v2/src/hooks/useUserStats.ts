@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import {
-  completeQuestAction,
-  completeJourneyStepAction,
-} from "@/app/actions/gameActions";
+import { completeRoomActivityAction } from "@/app/actions/gameActions";
+import { submitQuestOffline } from "@/lib/offline/submitQuest";
 import type { User } from "@db/schema";
 
 export function useUserStats() {
@@ -45,27 +43,34 @@ export function useUserStats() {
   const completeQuest = async (questId: string, _pointsEarned?: number, responseData?: unknown) => {
     if (!authUser?.id) return null;
 
-    if (responseData) {
-      await supabase.from("quest_responses").insert({
-        user_id: authUser.id,
-        quest_id: questId,
-        status: "completed",
-        response_data: responseData,
-      });
-    }
+    const payload =
+      responseData && typeof responseData === "object" && !Array.isArray(responseData)
+        ? (responseData as Record<string, unknown>)
+        : responseData != null
+          ? { data: responseData }
+          : {};
 
-    const result = await completeQuestAction(authUser.id, questId);
-    if (result?.success) {
+    const roomId =
+      (authUser.user_metadata?.room_id as string | undefined) ?? null;
+    const { synced, error } = await submitQuestOffline(authUser.id, questId, {
+      payload,
+      roomId,
+    });
+    if (synced) {
       await fetchStats();
+      return { success: true as const };
     }
-    return result;
+    if (!error) {
+      return { success: true as const, pendingSync: true as const };
+    }
+    return { success: false as const, error };
   };
 
   /** Journey / mission step completion — XP (+ optional points) via rewards engine. */
   const completeMission = async (stepId: string) => {
     if (!authUser?.id) return null;
 
-    const result = await completeJourneyStepAction(authUser.id, stepId);
+    const result = await completeRoomActivityAction(authUser.id, stepId);
     if (result?.success) {
       await fetchStats();
     }

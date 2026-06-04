@@ -10,8 +10,10 @@ import {
   createMission,
   getMissions,
   createQuest,
-  getGuides,
-  createSession,
+  getTenants,
+  getAdminDepartures,
+  createTenant,
+  assignModeratorToTenant,
 } from "./actions";
 import {
   Shield,
@@ -25,6 +27,7 @@ import {
   Compass,
   Plus,
   Save,
+  Building2,
 } from "lucide-react";
 
 const roleColors: Record<string, string> = {
@@ -45,20 +48,34 @@ const roleIcons: Record<string, typeof Crown> = {
 
 export default function Admin() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"users" | "missions" | "quests" | "sessions">("users");
+  const [activeTab, setActiveTab] = useState<
+    "companies" | "users" | "missions" | "quests" | "departures"
+  >("companies");
 
   // Data states
   const [users, setUsers] = useState<any[]>([]);
+  const [tenants, setTenants] = useState<any[]>([]);
   const [missions, setMissions] = useState<any[]>([]);
-  const [guides, setGuides] = useState<any[]>([]);
+  const [departures, setDepartures] = useState<
+    {
+      id: string;
+      room_code: string;
+      status: string;
+      trip_title: string;
+      company_name: string;
+      guide_name: string;
+      created_at: string;
+    }[]
+  >([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedRoles, setSelectedRoles] = useState<Record<string, string>>({});
+  const [selectedTenants, setSelectedTenants] = useState<Record<string, string>>({});
+  const [newCompanyName, setNewCompanyName] = useState("");
+  const [assignModerator, setAssignModerator] = useState({ profileId: "", tenantId: "" });
 
   // Form states
   const [missionForm, setMissionForm] = useState({ title: "", description: "", imageUrl: "", xpReward: 100, latitude: 47.92, longitude: 106.92, radiusMeters: 50 });
   const [questForm, setQuestForm] = useState({ title: "", description: "", type: "quiz", pointReward: 50, difficulty: "easy", isCasual: true, missionId: "", questData: "{}" });
-  const [sessionForm, setSessionForm] = useState({ name: "", location: "", startDate: "", endDate: "", guideId: "" });
-
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -68,14 +85,16 @@ export default function Admin() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [uData, mData, gData] = await Promise.all([
+      const [uData, tData, mData, dData] = await Promise.all([
         getUsers(),
+        getTenants(),
         getMissions(),
-        getGuides(),
+        getAdminDepartures(),
       ]);
       setUsers(uData || []);
+      setTenants(tData || []);
       setMissions(mData || []);
-      setGuides(gData || []);
+      setDepartures(dData || []);
     } catch (err: any) {
       toast.error("Failed to load admin data: " + err.message);
     } finally {
@@ -86,12 +105,69 @@ export default function Admin() {
   const handleRoleUpdate = async (userId: string, currentRole: string) => {
     const newRole = selectedRoles[userId] || currentRole;
     if (newRole === currentRole) return;
+
+    const needsTenant = newRole === "moderator" || newRole === "guide";
+    const tenantId = selectedTenants[userId] || users.find((u) => u.id === userId)?.tenant_id;
+    if (needsTenant && !tenantId) {
+      toast.error("Select a travel company for moderator or guide roles.");
+      return;
+    }
+
     try {
-      await updateUserRole(userId, newRole);
+      await updateUserRole(userId, newRole, tenantId ?? null);
       toast.success("Role updated successfully!");
-      setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
+      const tenantName = tenants.find((t) => t.id === tenantId)?.name ?? null;
+      setUsers(
+        users.map((u) =>
+          u.id === userId
+            ? {
+                ...u,
+                role: newRole === "user" ? "tourist" : newRole,
+                tenant_id: needsTenant ? tenantId : null,
+                tenant_name: needsTenant ? tenantName : null,
+              }
+            : u,
+        ),
+      );
     } catch (err: any) {
       toast.error(err.message);
+    }
+  };
+
+  const handleCreateCompany = async () => {
+    if (!newCompanyName.trim()) return toast.error("Company name is required");
+    setIsSubmitting(true);
+    try {
+      const created = await createTenant(newCompanyName);
+      toast.success(`Company "${created.name}" created`);
+      setNewCompanyName("");
+      const tData = await getTenants();
+      setTenants(tData || []);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleAssignModerator = async () => {
+    if (!assignModerator.profileId || !assignModerator.tenantId) {
+      return toast.error("Select a user and company");
+    }
+    setIsSubmitting(true);
+    try {
+      await assignModeratorToTenant(
+        assignModerator.profileId,
+        assignModerator.tenantId,
+      );
+      toast.success("Moderator assigned to company");
+      setAssignModerator({ profileId: "", tenantId: "" });
+      const uData = await getUsers();
+      setUsers(uData || []);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -134,20 +210,6 @@ export default function Admin() {
     }
   };
 
-  const handleCreateSession = async () => {
-    if (!sessionForm.name || !sessionForm.startDate || !sessionForm.endDate) return toast.error("Name and Dates are required");
-    setIsSubmitting(true);
-    try {
-      const res = await createSession(sessionForm);
-      toast.success(`Session created! Invite Code: ${res.inviteCode}`);
-      setSessionForm({ name: "", location: "", startDate: "", endDate: "", guideId: "" });
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-[#1A1D26]">
       <div className="max-w-7xl mx-auto px-4 py-6">
@@ -158,12 +220,23 @@ export default function Admin() {
             Admin Dashboard
           </h1>
           <p className="text-sm text-[#A0A0B0]">
-            Manage users, gamified quests, physical missions, and tour sessions.
+            Manage users, missions, quests, and companies. Live departures are created in Moderator → Rooms.
           </p>
         </div>
 
         {/* Tabs Navigation */}
         <div className="flex space-x-2 overflow-x-auto mb-6 bg-[#322F36]/50 p-1 rounded-xl">
+          <Button
+            variant="ghost"
+            onClick={() => setActiveTab("companies")}
+            className={`flex-1 rounded-lg text-sm font-semibold whitespace-nowrap ${
+              activeTab === "companies"
+                ? "bg-[#1A1D26] text-[#F4C64D] shadow-sm"
+                : "text-[#A0A0B0] hover:text-white"
+            }`}
+          >
+            <Building2 className="w-4 h-4 mr-2" /> Companies
+          </Button>
           <Button
             variant="ghost"
             onClick={() => setActiveTab("users")}
@@ -193,12 +266,12 @@ export default function Admin() {
           </Button>
           <Button
             variant="ghost"
-            onClick={() => setActiveTab("sessions")}
+            onClick={() => setActiveTab("departures")}
             className={`flex-1 rounded-lg text-sm font-semibold ${
-              activeTab === "sessions" ? "bg-[#1A1D26] text-[#F4C64D] shadow-sm" : "text-[#A0A0B0] hover:text-white"
+              activeTab === "departures" ? "bg-[#1A1D26] text-[#F4C64D] shadow-sm" : "text-[#A0A0B0] hover:text-white"
             }`}
           >
-            <Route className="w-4 h-4 mr-2" /> Sessions
+            <Route className="w-4 h-4 mr-2" /> Departures
           </Button>
         </div>
 
@@ -209,7 +282,94 @@ export default function Admin() {
           </div>
         ) : (
           <div className="bg-[#322F36]/80 rounded-xl border border-[#322F36] overflow-hidden p-6">
-            
+
+            {/* COMPANIES TAB */}
+            {activeTab === "companies" && (
+              <div className="space-y-8 max-w-2xl mx-auto">
+                <div>
+                  <h2 className="text-xl font-bold text-white mb-2">Travel companies (tenants)</h2>
+                  <p className="text-sm text-[#A0A0B0] mb-4">
+                    Create a company, then assign a moderator to own and run it (trips, rooms, guides).
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newCompanyName}
+                      onChange={(e) => setNewCompanyName(e.target.value)}
+                      placeholder="Company name"
+                      className="bg-[#1A1D26] border-[#322F36] text-white"
+                    />
+                    <Button
+                      onClick={handleCreateCompany}
+                      disabled={isSubmitting}
+                      className="bg-[#F4C64D] text-[#1A1D26] font-bold shrink-0"
+                    >
+                      <Plus className="w-4 h-4 mr-1" /> Create
+                    </Button>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-[#A0A0B0] mb-2">Existing companies</h3>
+                  <ul className="space-y-2">
+                    {tenants.length === 0 ? (
+                      <li className="text-sm text-[#A0A0B0]">No companies yet.</li>
+                    ) : (
+                      tenants.map((t) => (
+                        <li
+                          key={t.id}
+                          className="flex items-center justify-between rounded-lg bg-[#1A1D26] px-3 py-2 text-white text-sm"
+                        >
+                          <span>{t.name}</span>
+                          <span className="text-xs text-[#A0A0B0] font-mono">{t.id.slice(0, 8)}…</span>
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                </div>
+
+                <div className="border-t border-[#1A1D26] pt-6">
+                  <h3 className="text-lg font-bold text-white mb-2">Assign company moderator</h3>
+                  <div className="space-y-3">
+                    <select
+                      value={assignModerator.profileId}
+                      onChange={(e) =>
+                        setAssignModerator({ ...assignModerator, profileId: e.target.value })
+                      }
+                      className="w-full h-10 bg-[#1A1D26] text-white rounded-md border border-[#322F36] px-3"
+                    >
+                      <option value="">Select user…</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.full_name ?? u.email ?? u.id} ({u.role})
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={assignModerator.tenantId}
+                      onChange={(e) =>
+                        setAssignModerator({ ...assignModerator, tenantId: e.target.value })
+                      }
+                      className="w-full h-10 bg-[#1A1D26] text-white rounded-md border border-[#322F36] px-3"
+                    >
+                      <option value="">Select company…</option>
+                      {tenants.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      onClick={handleAssignModerator}
+                      disabled={isSubmitting}
+                      className="w-full bg-[#F2994A] text-[#1A1D26] font-bold"
+                    >
+                      Assign as moderator
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* USERS TAB */}
             {activeTab === "users" && (
               <div className="overflow-x-auto">
@@ -218,6 +378,7 @@ export default function Admin() {
                     <tr className="border-b border-[#1A1D26]">
                       <th className="text-left p-3 text-xs text-[#A0A0B0] font-medium">User</th>
                       <th className="text-left p-3 text-xs text-[#A0A0B0] font-medium">Email</th>
+                      <th className="text-left p-3 text-xs text-[#A0A0B0] font-medium">Company</th>
                       <th className="text-left p-3 text-xs text-[#A0A0B0] font-medium">Current Role</th>
                       <th className="text-left p-3 text-xs text-[#A0A0B0] font-medium">Change Role</th>
                       <th className="text-left p-3 text-xs text-[#A0A0B0] font-medium">Actions</th>
@@ -226,6 +387,10 @@ export default function Admin() {
                   <tbody>
                     {users.map((u) => {
                       const RoleIcon = roleIcons[u.role] ?? Compass;
+                      const effectiveRole =
+                        selectedRoles[u.id] ?? (u.role === "user" ? "tourist" : u.role);
+                      const showTenantPicker =
+                        effectiveRole === "moderator" || effectiveRole === "guide";
                       return (
                         <tr key={u.id} className="border-b border-[#1A1D26]/50 hover:bg-[#1A1D26]/30">
                           <td className="p-3">
@@ -236,22 +401,47 @@ export default function Admin() {
                           </td>
                           <td className="p-3"><span className="text-sm text-[#A0A0B0]">{u.email}</span></td>
                           <td className="p-3">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${roleColors[u.role]}`}>
+                            <span className="text-sm text-[#A0A0B0]">{u.tenant_name ?? "—"}</span>
+                          </td>
+                          <td className="p-3">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${roleColors[u.role] ?? roleColors.user}`}>
                               <RoleIcon className="w-3 h-3" /> {u.role}
                             </span>
                           </td>
                           <td className="p-3">
-                            <select
-                              value={selectedRoles[u.id] ?? u.role}
-                              onChange={(e) => setSelectedRoles({ ...selectedRoles, [u.id]: e.target.value })}
-                              className="bg-[#1A1D26] text-white text-sm rounded-lg px-2 py-1 border border-[#322F36] focus:border-[#F4C64D] outline-none"
-                            >
-                              <option value="user">User</option>
-                              <option value="tourist">Tourist</option>
-                              <option value="guide">Guide</option>
-                              <option value="moderator">Moderator</option>
-                              <option value="admin">Admin</option>
-                            </select>
+                            <div className="flex flex-col gap-1">
+                              <select
+                                value={selectedRoles[u.id] ?? (u.role === "user" ? "tourist" : u.role)}
+                                onChange={(e) =>
+                                  setSelectedRoles({ ...selectedRoles, [u.id]: e.target.value })
+                                }
+                                className="bg-[#1A1D26] text-white text-sm rounded-lg px-2 py-1 border border-[#322F36] focus:border-[#F4C64D] outline-none"
+                              >
+                                <option value="tourist">Tourist</option>
+                                <option value="guide">Guide</option>
+                                <option value="moderator">Moderator</option>
+                                <option value="admin">Admin</option>
+                              </select>
+                              {showTenantPicker && (
+                                <select
+                                  value={selectedTenants[u.id] ?? u.tenant_id ?? ""}
+                                  onChange={(e) =>
+                                    setSelectedTenants({
+                                      ...selectedTenants,
+                                      [u.id]: e.target.value,
+                                    })
+                                  }
+                                  className="bg-[#1A1D26] text-white text-xs rounded-lg px-2 py-1 border border-[#322F36] outline-none"
+                                >
+                                  <option value="">Company…</option>
+                                  {tenants.map((t) => (
+                                    <option key={t.id} value={t.id}>
+                                      {t.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
                           </td>
                           <td className="p-3">
                             <Button
@@ -389,42 +579,57 @@ export default function Admin() {
               </div>
             )}
 
-            {/* SESSIONS TAB */}
-            {activeTab === "sessions" && (
-              <div className="max-w-xl mx-auto">
-                <h2 className="text-xl font-bold text-white mb-4">Create Tour Session</h2>
-                <div className="space-y-4">
+            {/* DEPARTURES TAB (rooms — read-only for admin) */}
+            {activeTab === "departures" && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div>
-                    <label className="text-sm text-[#A0A0B0]">Session Name</label>
-                    <Input value={sessionForm.name} onChange={e => setSessionForm({...sessionForm, name: e.target.value})} className="bg-[#1A1D26] border-[#322F36] text-white mt-1" />
+                    <h2 className="text-xl font-bold text-white">Live departures (rooms)</h2>
+                    <p className="text-sm text-[#A0A0B0] mt-1">
+                      Moderators create rooms from trip templates and share{" "}
+                      <span className="font-mono text-[#F4C64D]">room_code</span> with tourists.
+                      Legacy <span className="line-through">sessions</span> / invite codes are retired.
+                    </p>
                   </div>
-                  <div>
-                    <label className="text-sm text-[#A0A0B0]">Location</label>
-                    <Input value={sessionForm.location} onChange={e => setSessionForm({...sessionForm, location: e.target.value})} className="bg-[#1A1D26] border-[#322F36] text-white mt-1" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm text-[#A0A0B0]">Start Date</label>
-                      <Input type="date" value={sessionForm.startDate} onChange={e => setSessionForm({...sessionForm, startDate: e.target.value})} className="bg-[#1A1D26] border-[#322F36] text-white mt-1" />
-                    </div>
-                    <div>
-                      <label className="text-sm text-[#A0A0B0]">End Date</label>
-                      <Input type="date" value={sessionForm.endDate} onChange={e => setSessionForm({...sessionForm, endDate: e.target.value})} className="bg-[#1A1D26] border-[#322F36] text-white mt-1" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm text-[#A0A0B0]">Assign Guide</label>
-                    <select value={sessionForm.guideId} onChange={e => setSessionForm({...sessionForm, guideId: e.target.value})} className="w-full h-10 mt-1 bg-[#1A1D26] text-white rounded-md border border-[#322F36] px-3">
-                      <option value="">No Guide (Self-guided)</option>
-                      {guides.map(g => (
-                        <option key={g.id} value={g.id}>{g.full_name || g.email}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <Button onClick={handleCreateSession} disabled={isSubmitting} className="w-full bg-[#F4C64D] text-[#1A1D26] font-bold mt-4">
-                    <Plus className="w-4 h-4 mr-2" /> Create Session & Gen Invite Code
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-[#F4C64D]/40 text-[#F4C64D]"
+                    onClick={() => router.push("/moderator/rooms")}
+                  >
+                    Open Moderator Rooms →
                   </Button>
                 </div>
+                {departures.length === 0 ? (
+                  <p className="text-[#A0A0B0] text-sm py-8 text-center">
+                    No rooms yet. Assign a company moderator and create rooms from a trip template.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-[#322F36]">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-[#1A1D26] text-[#A0A0B0] uppercase text-xs">
+                        <tr>
+                          <th className="px-4 py-3">Code</th>
+                          <th className="px-4 py-3">Trip</th>
+                          <th className="px-4 py-3">Company</th>
+                          <th className="px-4 py-3">Guide</th>
+                          <th className="px-4 py-3">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {departures.map((d) => (
+                          <tr key={d.id} className="border-t border-[#322F36] text-white">
+                            <td className="px-4 py-3 font-mono text-[#F4C64D]">{d.room_code}</td>
+                            <td className="px-4 py-3">{d.trip_title}</td>
+                            <td className="px-4 py-3">{d.company_name}</td>
+                            <td className="px-4 py-3">{d.guide_name}</td>
+                            <td className="px-4 py-3 capitalize">{d.status}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
             

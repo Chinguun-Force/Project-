@@ -2,46 +2,209 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
+import {
+  tenantIdForRole,
+  toLegacyUserRole,
+  toProfileRole,
+} from "@/lib/auth/profile";
 
 const getAdminSupabase = () => {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 };
 
 export async function getUsers() {
   const supabase = getAdminSupabase();
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, full_name, email, role, avatar_url, current_xp")
-    .order("created_at", { ascending: false });
 
-  if (error) throw new Error(error.message);
-  return data;
+  const [{ data: profiles, error: profilesError }, { data: users, error: usersError }] =
+    await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, full_name, role, tenant_id, tenants(name)")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("users")
+        .select("id, email, avatar_url, current_xp, role")
+        .order("created_at", { ascending: false }),
+    ]);
+
+  if (profilesError) throw new Error(profilesError.message);
+  if (usersError) throw new Error(usersError.message);
+
+  const usersById = new Map((users ?? []).map((u) => [u.id, u]));
+
+  return (profiles ?? []).map((p) => {
+    const legacy = usersById.get(p.id);
+    const tenantJoin = p.tenants as { name: string } | { name: string }[] | null;
+    const tenantName = Array.isArray(tenantJoin)
+      ? tenantJoin[0]?.name
+      : tenantJoin?.name;
+
+    return {
+      id: p.id,
+      full_name: p.full_name ?? legacy?.full_name ?? null,
+      email: legacy?.email ?? null,
+      role: p.role,
+      tenant_id: p.tenant_id,
+      tenant_name: tenantName ?? null,
+      avatar_url: legacy?.avatar_url ?? null,
+      current_xp: legacy?.current_xp ?? 0,
+    };
+  });
 }
 
-export async function updateUserRole(userId: string, newRole: string) {
+export async function updateUserRole(
+  userId: string,
+  newRole: string,
+  tenantId?: string | null,
+) {
   const supabase = getAdminSupabase();
-  const { error } = await supabase
-    .from("users")
-    .update({ role: newRole })
+  const profileRole = toProfileRole(newRole);
+  const resolvedTenantId = tenantIdForRole(profileRole, tenantId ?? null);
+
+  if (
+    (profileRole === "moderator" || profileRole === "guide") &&
+    !resolvedTenantId
+  ) {
+    throw new Error(
+      "Company roles (moderator, guide) require a travel company (tenant). Assign one in the Companies tab first.",
+    );
+  }
+
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .update({
+      role: profileRole,
+      tenant_id: resolvedTenantId,
+    })
     .eq("id", userId);
 
-  if (error) throw new Error(error.message);
+  if (profileError) throw new Error(profileError.message);
+
+  const { error: userError } = await supabase
+    .from("users")
+    .update({ role: toLegacyUserRole(profileRole) })
+    .eq("id", userId);
+
+  if (userError) throw new Error(userError.message);
+
   revalidatePath("/admin" as any);
   return { success: true };
 }
 
-export async function getJourneyDays() {
+export async function getTenants() {
   const supabase = getAdminSupabase();
   const { data, error } = await supabase
-    .from("journey_days")
-    .select("id, title, session_id, sessions(name)")
-    .order("created_at", { ascending: false });
+    .from("tenants")
+    .select("id, name, created_at")
+    .order("name");
 
   if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function createTenant(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Company name is required");
+
+  const supabase = getAdminSupabase();
+  const { data, error } = await supabase
+    .from("tenants")
+    .insert({ name: trimmed })
+    .select("id, name")
+    .single();
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/admin" as any);
   return data;
+}
+
+export async function assignModeratorToTenant(
+  profileId: string,
+  tenantId: string,
+) {
+  const supabase = getAdminSupabase();
+
+  const { data: tenant, error: tenantError } = await supabase
+    .from("tenants")
+    .select("id")
+    .eq("id", tenantId)
+    .maybeSingle();
+
+  if (tenantError) throw new Error(tenantError.message);
+  if (!tenant) throw new Error("Travel company not found");
+
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .update({ role: "moderator", tenant_id: tenantId })
+    .eq("id", profileId);
+
+  if (profileError) throw new Error(profileError.message);
+
+  const { error: userError } = await supabase
+    .from("users")
+    .update({ role: "moderator" })
+    .eq("id", profileId);
+
+  if (userError) throw new Error(userError.message);
+
+  revalidatePath("/admin" as any);
+  return { success: true };
+}
+
+/** Live departures (rooms) across all tenants — replaces legacy sessions admin view. */
+export async function getAdminDepartures() {
+  const supabase = getAdminSupabase();
+  const { data, error } = await supabase
+    .from("rooms")
+    .select(
+      `
+      id,
+      room_code,
+      status,
+      created_at,
+      guide_id,
+      trips ( title ),
+      tenants ( name )
+    `,
+    )
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (error) throw new Error(error.message);
+
+  const guideIds = [
+    ...new Set((data ?? []).map((r) => r.guide_id).filter(Boolean)),
+  ] as string[];
+  const guideNames: Record<string, string> = {};
+  if (guideIds.length > 0) {
+    const { data: guides } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", guideIds);
+    for (const g of guides ?? []) {
+      guideNames[g.id] = g.full_name ?? "Guide";
+    }
+  }
+
+  return (data ?? []).map((row) => {
+    const tripRaw = row.trips as { title?: string } | { title?: string }[] | null;
+    const trip = Array.isArray(tripRaw) ? tripRaw[0] : tripRaw;
+    const tenantRaw = row.tenants as { name?: string } | { name?: string }[] | null;
+    const tenant = Array.isArray(tenantRaw) ? tenantRaw[0] : tenantRaw;
+
+    return {
+      id: row.id,
+      room_code: row.room_code,
+      status: row.status,
+      created_at: row.created_at,
+      trip_title: trip?.title ?? "—",
+      company_name: tenant?.name ?? "—",
+      guide_name: row.guide_id ? guideNames[row.guide_id] ?? "Guide" : "Unassigned",
+    };
+  });
 }
 
 export async function createMission(payload: {
@@ -90,8 +253,7 @@ export async function createQuest(payload: {
   questData: any;
 }) {
   const supabase = getAdminSupabase();
-  
-  // 1. Insert Quest
+
   const { data: questData, error: questError } = await supabase
     .from("quests")
     .insert({
@@ -110,50 +272,42 @@ export async function createQuest(payload: {
 
   if (questError) throw new Error(questError.message);
 
-  // 2. Insert Quest Data (Metadata)
   const { error: dataError } = await supabase.from("quest_data").insert({
     quest_id: questData.id,
-    [payload.type + "_data"]: payload.questData, // e.g. quiz_data or photo_data
+    [payload.type + "_data"]: payload.questData,
   });
 
   if (dataError) throw new Error(dataError.message);
-  
+
   return { success: true };
 }
 
 export async function getGuides() {
   const supabase = getAdminSupabase();
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, full_name, email")
+  const { data: profiles, error: profilesError } = await supabase
+    .from("profiles")
+    .select("id, full_name, role")
     .in("role", ["guide", "admin"]);
 
-  if (error) throw new Error(error.message);
-  return data;
+  if (profilesError) throw new Error(profilesError.message);
+
+  const ids = (profiles ?? []).map((p) => p.id);
+  if (ids.length === 0) return [];
+
+  const { data: users, error: usersError } = await supabase
+    .from("users")
+    .select("id, email")
+    .in("id", ids);
+
+  if (usersError) throw new Error(usersError.message);
+
+  const emailById = new Map((users ?? []).map((u) => [u.id, u.email]));
+
+  return (profiles ?? []).map((p) => ({
+    id: p.id,
+    full_name: p.full_name,
+    email: emailById.get(p.id) ?? null,
+    role: p.role,
+  }));
 }
 
-export async function createSession(payload: {
-  name: string;
-  location: string;
-  startDate: string;
-  endDate: string;
-  guideId: string | null;
-}) {
-  const supabase = getAdminSupabase();
-  
-  // Generate a random 6-character alphanumeric invite code
-  const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-
-  const { error } = await supabase.from("sessions").insert({
-    name: payload.name,
-    location: payload.location,
-    start_date: new Date(payload.startDate).toISOString(),
-    end_date: new Date(payload.endDate).toISOString(),
-    guide_id: payload.guideId || null,
-    invite_code: inviteCode,
-    is_active: true,
-  });
-
-  if (error) throw new Error(error.message);
-  return { success: true, inviteCode };
-}

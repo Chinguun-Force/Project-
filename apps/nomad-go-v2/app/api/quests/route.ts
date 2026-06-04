@@ -2,12 +2,11 @@ import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { getSupabaseConfig } from '@/utils/supabase/config';
-import { notifyQuestCreated } from "@/utils/notifications/webPush";
 
-// GET /api/quests?sessionId=...
+// GET /api/quests — global + casual quests (sessionId query ignored; deprecated)
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const sessionId = searchParams.get('sessionId');
+  const _legacySessionId = searchParams.get('sessionId');
 
   const supabase = await createClient();
   const {
@@ -33,9 +32,7 @@ export async function GET(req: Request) {
     .select('*')
     .order('created_at', { ascending: true });
 
-  if (sessionId) {
-    query = query.eq('session_id', sessionId);
-  }
+  query = query.is('session_id', null);
 
   const { data: quests, error } = await query;
 
@@ -113,64 +110,8 @@ export async function GET(req: Request) {
   return NextResponse.json(visibleQuests);
 }
 
-// POST /api/quests
-export async function POST(req: Request) {
-  try {
-    const supabase = await createClient();
-    const body = await req.json();
-    const { sessionId, type, title, description, xpReward, dayNumber, configData, availableFrom } = body;
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    // Verify user is the guide for this session
-    const { data: session } = await supabase
-      .from('sessions')
-      .select('guide_id')
-      .eq('id', sessionId)
-      .single();
-
-    if (session?.guide_id !== user.id) {
-      return NextResponse.json({ error: 'Only the guide can create quests' }, { status: 403 });
-    }
-
-    // Insert main quest record
-    const { data: quest, error: qError } = await supabase
-      .from('quests')
-      .insert({
-        session_id: sessionId,
-        type,
-        title,
-        description,
-        xp_reward: xpReward,
-        day_number: dayNumber,
-        created_by: user.id,
-        is_dynamic: true,
-        available_from: availableFrom
-      })
-      .select()
-      .single();
-
-    if (qError) return NextResponse.json({ error: qError.message }, { status: 400 });
-
-    // Insert quest-specific data
-    if (configData) {
-      const { error: dError } = await supabase
-        .from('quest_data')
-        .insert({
-          quest_id: quest.id,
-          [`${type}_data`]: configData
-        });
-      
-      if (dError) {
-        // Rollback quest if data fails? For MVP we'll just log or return error
-        console.error('Quest data insertion failed:', dError);
-      }
-    }
-
-    await notifyQuestCreated(quest.title, (quest.location as string | null) ?? null);
-    return NextResponse.json(quest);
-  } catch {
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
-  }
+// POST /api/quests — legacy session-scoped quest creation removed
+export async function POST() {
+  const { legacySessionDeprecatedResponse } = await import("@/lib/legacy/deprecated");
+  return legacySessionDeprecatedResponse();
 }

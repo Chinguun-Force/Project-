@@ -6,7 +6,7 @@ export async function GET() {
     const supabase = await createClient();
     const startedAt = Date.now();
 
-    const { error } = await supabase.from("sessions").select("id").limit(1);
+    const { error } = await supabase.from("rooms").select("id").limit(1);
 
     if (error) {
       return NextResponse.json(

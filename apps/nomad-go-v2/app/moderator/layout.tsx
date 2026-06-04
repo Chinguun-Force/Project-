@@ -1,6 +1,7 @@
 import { createClient } from "@/utils/supabase/server";
 import { redirect } from "next/navigation";
-import { canAccessModerator } from "@/lib/auth/roles";
+import { canAccessModerator, isCompanyModerator } from "@/lib/auth/roles";
+import ModeratorShell from "./ModeratorShell";
 
 export default async function ModeratorLayout({
   children,
@@ -17,8 +18,8 @@ export default async function ModeratorLayout({
   }
 
   const { data: profile } = await supabase
-    .from("users")
-    .select("role")
+    .from("profiles")
+    .select("role, tenant_id, tenants(name)")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -26,5 +27,18 @@ export default async function ModeratorLayout({
     redirect("/");
   }
 
-  return <>{children}</>;
+  if (!isCompanyModerator(profile?.role)) {
+    redirect("/admin");
+  }
+
+  if (!profile?.tenant_id) {
+    redirect("/admin");
+  }
+
+  const tenantJoin = profile.tenants as { name: string } | { name: string }[] | null;
+  const companyName = Array.isArray(tenantJoin)
+    ? tenantJoin[0]?.name ?? null
+    : tenantJoin?.name ?? null;
+
+  return <ModeratorShell companyName={companyName}>{children}</ModeratorShell>;
 }

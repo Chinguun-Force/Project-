@@ -6,40 +6,31 @@ import { trpc } from "@/providers/trpc";
 import { Flame, MapPin, ChevronRight } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import {
-  getTouristActiveSessionAction,
+  getTouristActiveRoomAction,
+  joinRoomByCodeAction,
   claimDailyCheckinAction,
   getUserProgressAction,
-  completeJourneyStepAction,
+  completeRoomActivityAction,
 } from "@/app/actions/gameActions";
+import { setOfflineCache } from "@/lib/offline/idb";
 import { toast } from "sonner";
 
 import {
   computeOptimisticRewards,
   getMongolianRank,
 } from "@/lib/gamification";
-
-// SVG for Knucklebone (Horse position)
-const ShagaiIcon = ({ className }: { className?: string }) => (
-  <svg 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="1.5" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
-    className={className}
-  >
-    <path d="M7 6C5 6 4 7 4 9C4 11 5 13 8 13C10 13 11 15 11 17C11 19 13 20 15 20C17 20 19 19 19 17C19 15 17 14 15 14C12 14 10 12 10 9C10 7 12 6 15 6C17 6 18 5 18 3C18 1.5 16 1.5 14 3C12 4.5 10 4 7 4" />
-  </svg>
-);
+import { ShagaiIcon } from "@/components/ShagaiIcon";
+import { LegacySessionMigrateBanner } from "@/components/LegacySessionMigrateBanner";
 
 export default function Dashboard() {
   const { user } = useAuth();
   const router = useRouter();
   const utils = trpc.useUtils();
 
-  const [activeSession, setActiveSession] = useState<any>(null);
-  const [isLoadingSession, setIsLoadingSession] = useState(true);
+  const [activeExpedition, setActiveExpedition] = useState<any>(null);
+  const [isLoadingExpedition, setIsLoadingExpedition] = useState(true);
+  const [roomCodeInput, setRoomCodeInput] = useState("");
+  const [isJoining, setIsJoining] = useState(false);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [completingStepId, setCompletingStepId] = useState<string | null>(null);
 
@@ -67,17 +58,28 @@ export default function Dashboard() {
     }
   }, [user, isCheckingIn]);
 
-  // Load Active Session
-  useEffect(() => {
-    if (user?.user_metadata?.session_id) {
-      getTouristActiveSessionAction(user.user_metadata.session_id).then(data => {
-        setActiveSession(data);
-        setIsLoadingSession(false);
-      });
-    } else {
-      setIsLoadingSession(false);
+  const loadActiveExpedition = async () => {
+    if (!user?.id) {
+      setIsLoadingExpedition(false);
+      return;
     }
-  }, [user]);
+    setIsLoadingExpedition(true);
+    const roomId = user.user_metadata?.room_id as string | undefined;
+    const data = await getTouristActiveRoomAction(user.id, roomId);
+    setActiveExpedition(data);
+    if (data) {
+      try {
+        await setOfflineCache(`room:${data.id}`, data);
+      } catch {
+        /* IndexedDB optional */
+      }
+    }
+    setIsLoadingExpedition(false);
+  };
+
+  useEffect(() => {
+    loadActiveExpedition();
+  }, [user?.id, user?.user_metadata?.room_id]);
 
   const triggerRewardAnimation = (xpReward: number, shagaiReward: number) => {
     // 1. Instantly trigger smooth optimistic UI increments
@@ -177,7 +179,7 @@ export default function Dashboard() {
     );
     triggerRewardAnimation(finalXpReward, finalPointReward);
 
-    const res = await completeJourneyStepAction(user.id, step.id);
+    const res = await completeRoomActivityAction(user.id, step.id);
     if (res.success) {
       getUserProgressAction(user.id).then((data) => {
         if (data) {
@@ -188,14 +190,14 @@ export default function Dashboard() {
           setLocalXpThreshold(data.xpThreshold);
         }
       });
-      setActiveSession((prev: typeof activeSession) => {
+      setActiveExpedition((prev: typeof activeExpedition) => {
         if (!prev?.journey_days) return prev;
         return {
           ...prev,
-          journey_days: prev.journey_days.map((day: { journey_steps?: { id: string; status?: string }[] }) => ({
+          journey_days: prev.journey_days.map((day: { journey_steps?: { id: string; status?: string; xp_reward?: number }[] }) => ({
             ...day,
             journey_steps: day.journey_steps?.map((s) =>
-              s.id === step.id ? { ...s, status: "completed" } : s
+              s.id === step.id ? { ...s, status: "completed", xp_reward: 0 } : s
             ),
           })),
         };
@@ -244,7 +246,22 @@ export default function Dashboard() {
   const percentage = Math.min(100, Math.max(0, (currentLevelRelativeXp / localXpThreshold) * 100));
 
   // Current journey day (default to Day 1 for timeline)
-  const currentDay = activeSession?.journey_days?.[0];
+  const handleJoinExpedition = async () => {
+    if (!user || isJoining || !roomCodeInput.trim()) return;
+    setIsJoining(true);
+    const res = await joinRoomByCodeAction(roomCodeInput);
+    setIsJoining(false);
+    if (res.error) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success("You joined the expedition!");
+    setRoomCodeInput("");
+    router.refresh();
+    await loadActiveExpedition();
+  };
+
+  const currentDay = activeExpedition?.journey_days?.[0];
 
   return (
     <div className="min-h-screen bg-background text-foreground pb-20">
@@ -258,7 +275,8 @@ export default function Dashboard() {
         }
       `}</style>
       <div className="max-w-7xl mx-auto px-4 py-8">
-        
+        <LegacySessionMigrateBanner />
+
         {/* TOP SECTION: User Profile & Shagai Wallet */}
         <div className="flex justify-between items-start mb-8">
           <div className="flex flex-col flex-1 max-w-sm mr-8">
@@ -308,11 +326,15 @@ export default function Dashboard() {
               </div>
             ))}
 
-            <div className="flex items-center gap-3">
-              <span className="text-2xl font-bold font-mono text-emerald-400 tracking-tighter transition-all duration-500">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <ShagaiIcon
+                size="lg"
+                balance={availablePoints}
+                highlight={isGlow}
+              />
+              <span className="text-2xl sm:text-3xl font-bold font-mono text-emerald-400 tracking-tighter transition-all duration-500">
                 {availablePoints.toLocaleString()}
               </span>
-              <ShagaiIcon className={`w-8 h-8 text-emerald-400 transition-all duration-500 ${isGlow ? 'drop-shadow-[0_0_20px_rgba(16,185,129,0.8)] scale-110' : 'drop-shadow-[0_0_10px_rgba(52,211,153,0.4)]'}`} />
             </div>
             <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest mt-1">
               My Shagai
@@ -357,7 +379,7 @@ export default function Dashboard() {
             
             {/* Left Column: Current Journey */}
             <div className="lg:col-span-2 bg-card border border-border rounded-3xl p-6">
-              {isLoadingSession ? (
+              {isLoadingExpedition ? (
                 <div className="animate-pulse flex flex-col gap-4">
                   <div className="h-6 w-1/3 bg-muted rounded"></div>
                   <div className="h-4 w-1/4 bg-muted rounded"></div>
@@ -366,15 +388,20 @@ export default function Dashboard() {
                     <div className="h-12 bg-muted rounded-xl"></div>
                   </div>
                 </div>
-              ) : activeSession ? (
+              ) : activeExpedition ? (
                 <div>
                   <div className="flex items-start justify-between mb-8">
                     <div>
-                      <h3 className="text-2xl font-bold text-foreground">{activeSession.name}</h3>
+                      <h3 className="text-2xl font-bold text-foreground">{activeExpedition.name}</h3>
                       <div className="flex items-center gap-1.5 text-muted-foreground mt-2">
                         <MapPin className="w-4 h-4" />
-                        <span className="text-sm font-medium">{activeSession.location}</span>
+                        <span className="text-sm font-medium">
+                          {activeExpedition.location || "Mongolia"}
+                        </span>
                       </div>
+                      <p className="text-xs font-mono text-emerald-400/90 mt-1">
+                        Room {activeExpedition.room_code}
+                      </p>
                     </div>
                     <div className="bg-muted text-muted-foreground text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
                       Day {currentDay?.day_number || 1}
@@ -402,7 +429,7 @@ export default function Dashboard() {
                                   {step.description}
                                 </p>
                               )}
-                              {step.xp_reward > 0 && step.status !== "completed" && (
+                              {step.status === "in_progress" && step.xp_reward > 0 && (
                                 <button
                                   type="button"
                                   disabled={completingStepId === step.id}
@@ -414,6 +441,11 @@ export default function Dashboard() {
                                     : `Complete (+${step.xp_reward} XP)`}
                                 </button>
                               )}
+                              {step.status === "pending" && (
+                                <p className="mt-2 text-xs text-muted-foreground italic">
+                                  Waiting for your guide to start this stop
+                                </p>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -422,24 +454,42 @@ export default function Dashboard() {
                   </div>
                   
                   <button 
-                    onClick={() => router.push(`/tours/${activeSession.id}`)}
+                    onClick={() => router.push(`/tours/${activeExpedition.tripId}`)}
                     className="mt-8 w-full py-3 bg-muted hover:bg-emerald-500/10 hover:text-emerald-400 text-foreground text-sm font-medium rounded-xl transition-colors border border-transparent hover:border-emerald-500/20"
                   >
                     View Full Itinerary
                   </button>
                 </div>
               ) : (
-                <div className="h-full min-h-[300px] flex flex-col items-center justify-center text-center">
+                <div className="h-full min-h-[300px] flex flex-col items-center justify-center text-center px-2">
                   <MapPin className="w-12 h-12 text-muted-foreground mb-4 opacity-50" />
-                  <p className="font-semibold text-foreground text-lg mb-1">You have no active journey right now.</p>
+                  <p className="font-semibold text-foreground text-lg mb-1">Join your expedition</p>
                   <p className="text-sm text-muted-foreground max-w-sm mb-6">
-                    Enter your exclusive invitation code provided by your tour operator to unlock your itinerary.
+                    Enter the room code from your tour operator to unlock your live group itinerary.
                   </p>
+                  <div className="flex w-full max-w-md gap-2 mb-4">
+                    <input
+                      type="text"
+                      value={roomCodeInput}
+                      onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
+                      placeholder="Expedition code"
+                      className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-mono uppercase tracking-wider text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                      disabled={isJoining}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleJoinExpedition}
+                      disabled={isJoining || !roomCodeInput.trim()}
+                      className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-5 py-2.5 rounded-xl transition-colors disabled:opacity-50"
+                    >
+                      {isJoining ? <Spinner className="w-4 h-4" /> : "Join"}
+                    </button>
+                  </div>
                   <button
-                    onClick={() => router.push('/tours')}
-                    className="bg-foreground text-background font-semibold px-6 py-2.5 rounded-xl hover:bg-foreground/90 transition-colors"
+                    onClick={() => router.push("/tours")}
+                    className="text-sm text-muted-foreground hover:text-emerald-400 transition-colors"
                   >
-                    Find Journeys
+                    Browse tour marketplace →
                   </button>
                 </div>
               )}
@@ -453,9 +503,9 @@ export default function Dashboard() {
               >
                 <div className="absolute inset-0 bg-emerald-500/5 group-hover:bg-emerald-500/10 transition-colors duration-500" />
                 <div className="relative z-10 flex flex-col items-center">
-                  <div className="w-20 h-20 mb-6 relative">
-                    <div className="absolute inset-0 bg-emerald-400 blur-xl opacity-20 group-hover:opacity-40 transition-opacity" />
-                    <ShagaiIcon className="w-full h-full text-emerald-400 relative z-10" />
+                  <div className="mb-6 relative z-10 flex items-center justify-center">
+                    <div className="absolute w-32 h-32 bg-emerald-400 blur-2xl opacity-25 group-hover:opacity-45 transition-opacity rounded-full" />
+                    <ShagaiIcon size="xl" className="relative z-10" />
                   </div>
                   <h3 className="text-xl font-bold text-foreground mb-3 leading-tight max-w-[200px]">
                     Redeem Shagai for Exclusive Rewards

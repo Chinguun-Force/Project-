@@ -6,9 +6,14 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   canAccessAdmin,
   canAccessModerator,
+  isModeratorOnlyStaff,
+  isStaffRole,
   normalizeRole,
+  showAdminPanelNav,
+  showModeratorPanelNav,
   type AppRole,
 } from "@/lib/auth/roles";
+import { PROFILES_TABLE } from "@/lib/auth/profile";
 
 export function useUserRole() {
   const { user } = useAuth();
@@ -28,7 +33,7 @@ export function useUserRole() {
     (async () => {
       setLoading(true);
       const { data } = await supabase
-        .from("users")
+        .from(PROFILES_TABLE)
         .select("role")
         .eq("id", user.id)
         .maybeSingle();
@@ -49,7 +54,11 @@ export function useUserRole() {
     loading,
     isAdmin: canAccessAdmin(role),
     isModerator: role === "moderator",
+    isStaffRole: isStaffRole(role),
+    isModeratorOnlyStaff: isModeratorOnlyStaff(role),
     canAccessAdmin: canAccessAdmin(role),
     canAccessModerator: canAccessModerator(role),
+    showModeratorPanelNav: showModeratorPanelNav(role),
+    showAdminPanelNav: showAdminPanelNav(role),
   };
 }

@@ -1,7 +1,18 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import { getSupabaseConfig } from "@/utils/supabase/config";
-import { canAccessAdmin, canAccessModerator } from "@/lib/auth/roles";
+import {
+  canAccessAdmin,
+  canAccessGuide,
+  canAccessModerator,
+  getPostLoginPath,
+  getStaffHomePath,
+  isGuideStaff,
+  isModeratorOnlyStaff,
+  usesDedicatedAppShell,
+  isTouristAppPath,
+} from "@/lib/auth/roles";
+import { PROFILES_TABLE } from "@/lib/auth/profile";
 
 const PUBLIC_PREFIXES = ["/login", "/signup"];
 
@@ -47,32 +58,49 @@ export const updateSession = async (request: NextRequest) => {
     return NextResponse.redirect(redirectUrl);
   }
 
-  if (user && isPublicPath(pathname)) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/";
-    return NextResponse.redirect(redirectUrl);
-  }
+  let profileRole: string | undefined;
 
-  if (user && (pathname.startsWith("/admin") || pathname.startsWith("/moderator"))) {
+  if (user) {
     const { data: profile } = await supabase
-      .from("users")
+      .from(PROFILES_TABLE)
       .select("role")
       .eq("id", user.id)
       .maybeSingle();
+    profileRole = profile?.role ?? undefined;
+  }
 
-    const role = profile?.role;
+  if (user && isPublicPath(pathname)) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = getPostLoginPath(profileRole);
+    return NextResponse.redirect(redirectUrl);
+  }
 
-    if (pathname.startsWith("/admin") && !canAccessAdmin(role)) {
-      const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = "/";
-      return NextResponse.redirect(redirectUrl);
-    }
+  if (user && usesDedicatedAppShell(profileRole) && isTouristAppPath(pathname)) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = getStaffHomePath(profileRole);
+    return NextResponse.redirect(redirectUrl);
+  }
 
-    if (pathname.startsWith("/moderator") && !canAccessModerator(role)) {
-      const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = "/";
-      return NextResponse.redirect(redirectUrl);
-    }
+  if (user && pathname.startsWith("/admin") && !canAccessAdmin(profileRole)) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = isModeratorOnlyStaff(profileRole) ? "/moderator" : "/";
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  if (user && pathname.startsWith("/moderator") && !canAccessModerator(profileRole)) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = isGuideStaff(profileRole) ? "/guide" : "/";
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  if (user && pathname.startsWith("/guide") && !canAccessGuide(profileRole)) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = isModeratorOnlyStaff(profileRole)
+      ? "/moderator"
+      : canAccessAdmin(profileRole)
+        ? "/admin"
+        : "/";
+    return NextResponse.redirect(redirectUrl);
   }
 
   return supabaseResponse;

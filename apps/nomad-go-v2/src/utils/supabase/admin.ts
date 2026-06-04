@@ -2,6 +2,7 @@ import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { getSupabaseConfig } from "@/utils/supabase/config";
+import { PROFILES_TABLE } from "@/lib/auth/profile";
 
 export async function getAdminClient() {
   // 1) Use the cookie-based client to identify the current user.
@@ -15,7 +16,7 @@ export async function getAdminClient() {
   }
 
   const { data: profile, error } = await supabase
-    .from("users")
+    .from(PROFILES_TABLE)
     .select("role")
     .eq("id", user.id)
     .maybeSingle();

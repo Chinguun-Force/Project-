@@ -4,6 +4,7 @@ import "./globals.css";
 import { TRPCProvider } from "../src/providers/trpc";
 import Script from "next/script";
 import { PwaClient } from "@/components/PwaClient";
+import { OfflineSyncBridge } from "@/components/OfflineSyncBridge";
 import { AuthProvider } from "@/context/AuthContext";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -56,6 +57,7 @@ export default function RootLayout({
         <TRPCProvider>
           <AuthProvider>
             <PwaClient />
+            <OfflineSyncBridge />
             {children}
             <Toaster />
           </AuthProvider>

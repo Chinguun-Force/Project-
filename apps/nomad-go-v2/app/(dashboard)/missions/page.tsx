@@ -1,13 +1,30 @@
 "use client";
+
 import { useEffect, useState } from "react";
-import { getMissionsAction } from "@/app/actions/gameActions";
+import Link from "next/link";
+import { getMissionsAction, getToursForMissionAction } from "@/app/actions/gameActions";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ChevronDown, ChevronUp, MapPin, Route } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
+
+type TourSuggestion = {
+  tripTemplates: {
+    type: "trip";
+    id: string;
+    name: string;
+    description?: string | null;
+    companyName?: string | null;
+  }[];
+};
 
 export default function MissionsModule() {
   const [missions, setMissions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [toursByMission, setToursByMission] = useState<Record<string, TourSuggestion>>({});
+  const [loadingToursId, setLoadingToursId] = useState<string | null>(null);
 
   const { distances } = useGeolocation(missions);
 
@@ -26,6 +43,28 @@ export default function MissionsModule() {
     }
     loadMissions();
   }, []);
+
+  const toggleTours = async (missionId: string) => {
+    if (expandedId === missionId) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(missionId);
+    if (toursByMission[missionId]) return;
+
+    setLoadingToursId(missionId);
+    try {
+      const data = await getToursForMissionAction(missionId);
+      setToursByMission((prev) => ({ ...prev, [missionId]: data }));
+    } catch {
+      setToursByMission((prev) => ({
+        ...prev,
+        [missionId]: { tripTemplates: [] },
+      }));
+    } finally {
+      setLoadingToursId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -46,9 +85,12 @@ export default function MissionsModule() {
 
   return (
     <div className="p-6 bg-[#1A1D26] min-h-screen text-white">
-      <h1 className="text-2xl font-bold text-emerald-400 mb-6 shadow-sm">
+      <h1 className="text-2xl font-bold text-emerald-400 mb-2 shadow-sm">
         Sightseeing Bucket List
       </h1>
+      <p className="text-sm text-[#A0A0B0] mb-6">
+        Visit sights within radius to earn XP. Expand a sight to see tours that include it.
+      </p>
 
       {missions.length === 0 ? (
         <div className="border border-dashed border-zinc-700 p-8 text-center rounded-xl text-zinc-500">
@@ -60,6 +102,9 @@ export default function MissionsModule() {
             const distance = distances[mission.id];
             const isInside =
               distance !== undefined && distance <= (mission.radius_meters || 50);
+            const isExpanded = expandedId === mission.id;
+            const tours = toursByMission[mission.id];
+            const totalTours = tours?.tripTemplates.length ?? 0;
 
             return (
               <div
@@ -93,6 +138,57 @@ export default function MissionsModule() {
                         : "Calculating distance..."}
                     </span>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => toggleTours(mission.id)}
+                    className="mt-4 w-full flex items-center justify-between text-sm text-emerald-400/90 hover:text-emerald-400 border border-zinc-700 rounded-lg px-3 py-2"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Route className="w-4 h-4" />
+                      Tours including this sight
+                      {tours && totalTours > 0 && (
+                        <span className="text-zinc-500">({totalTours})</span>
+                      )}
+                    </span>
+                    {isExpanded ? (
+                      <ChevronUp className="w-4 h-4" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4" />
+                    )}
+                  </button>
+
+                  {isExpanded && (
+                    <div className="mt-3 space-y-2 border-t border-zinc-800 pt-3">
+                      {loadingToursId === mission.id ? (
+                        <div className="flex justify-center py-4">
+                          <Spinner className="w-5 h-5 text-emerald-400" />
+                        </div>
+                      ) : totalTours === 0 ? (
+                        <p className="text-xs text-zinc-500">
+                          No tours linked yet. Moderator can attach this sight to a trip template.
+                        </p>
+                      ) : (
+                        <>
+                          {tours?.tripTemplates.map((t) => (
+                            <Link
+                              key={t.id}
+                              href={`/tours/${t.id}`}
+                              className="block rounded-lg bg-zinc-800/50 px-3 py-2 text-sm hover:bg-zinc-800 transition-colors"
+                            >
+                              <p className="text-zinc-200 font-medium">{t.name}</p>
+                              {t.companyName && (
+                                <p className="text-xs text-zinc-500">{t.companyName}</p>
+                              )}
+                              <span className="text-[10px] uppercase text-[#F4C64D] tracking-wide">
+                                Trip template →
+                              </span>
+                            </Link>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             );

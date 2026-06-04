@@ -1,6 +1,11 @@
 'use server'
 import { createClient } from '@/utils/supabase/server'
 import { DEFAULT_QUEST_XP_REWARD } from '@/lib/gamification'
+import {
+  extractMissionsFromTripJoin,
+  formatTourCardMissions,
+} from '@/lib/tours/formatTourCard'
+import { mapRoomToActiveExpedition } from '@/lib/expedition/mapRoomToDashboard'
 
 // 1. Fetch All Live Missions from db
 export async function getMissionsAction() {
@@ -15,6 +20,56 @@ export async function getMissionsAction() {
     return []
   }
   return data || []
+}
+
+/** Published trip templates that include a given mission/sight. */
+export async function getToursForMissionAction(missionId: string) {
+  const supabase = await createClient()
+
+  const { data: tripLinks, error: tripError } = await supabase
+    .from('trip_missions')
+    .select('trip_id, trips(id, title, description, tenant_id, tenants(name))')
+    .eq('mission_id', missionId)
+
+  if (tripError) {
+    console.error('⛔ getToursForMissionAction trips:', tripError.message)
+  }
+
+  const tripTemplates = (tripLinks ?? []).flatMap((row) => {
+    const raw = row.trips as unknown
+    const trip = (Array.isArray(raw) ? raw[0] : raw) as Record<string, unknown> | null
+    if (!trip || typeof trip.id !== 'string' || typeof trip.title !== 'string') {
+      return []
+    }
+    const tenantJoin = trip.tenants as { name: string } | { name: string }[] | null | undefined
+    const companyName = Array.isArray(tenantJoin)
+      ? tenantJoin[0]?.name
+      : tenantJoin?.name ?? null
+    return [{
+      type: 'trip' as const,
+      id: trip.id,
+      name: trip.title,
+      description: typeof trip.description === 'string' ? trip.description : null,
+      companyName,
+    }]
+  })
+
+  return { tripTemplates }
+}
+
+/** Sights linked to a trip template (for room/trip detail). */
+export async function getMissionsForTripAction(tripId: string) {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('trip_missions')
+    .select('missions(*)')
+    .eq('trip_id', tripId)
+
+  if (error) {
+    console.error('⛔ getMissionsForTripAction:', error.message)
+    return []
+  }
+  return (data ?? []).map((r) => r.missions).filter(Boolean)
 }
 
 // 2. Fetch All Quests (Casual + Location Locked)
@@ -32,149 +87,322 @@ export async function getQuestsAction() {
   return data || []
 }
 
-// 3. Fetch All Active Tours (Sessions) with their itinerary stats
+// 3. Marketplace: published trip templates only
 export async function getToursAction() {
   const supabase = await createClient()
-  
-  const { data: sessionsData, error } = await supabase
-    .from("sessions")
-    .select(`
-      *,
-      session_missions (
-        missions (
-          title,
-          image_url
-        )
-      )
-    `)
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
 
-  if (error) {
-    console.error("⛔ Supabase Error inside getToursAction:", error.message)
-    return []
+  const tripsRes = await supabase
+    .from('trips')
+    .select(
+      `
+        id,
+        title,
+        description,
+        image_url,
+        price,
+        duration_days,
+        location,
+        created_at,
+        tenants ( name ),
+        trip_missions (
+          missions ( id, title, image_url, xp_reward )
+        )
+      `,
+    )
+    .eq('is_published', true)
+    .order('created_at', { ascending: false })
+
+  if (tripsRes.error) {
+    console.error('⛔ getToursAction trips:', tripsRes.error.message)
   }
 
-  const formattedSessions = (sessionsData || []).map((session: any) => ({
-    ...session,
-    missions: session.session_missions?.map((sm: any) => sm.missions).filter(Boolean) || []
-  }))
+  const tripCards = (tripsRes.data ?? []).map((trip) => {
+    const missionList = extractMissionsFromTripJoin(
+      trip.trip_missions as { missions: unknown }[],
+    )
+    const { missions, topMissions, extraMissionCount } =
+      formatTourCardMissions(missionList)
+    const tenantRaw = trip.tenants as unknown
+    const tenant = (Array.isArray(tenantRaw) ? tenantRaw[0] : tenantRaw) as {
+      name?: string
+    } | null
 
-  return formattedSessions;
+    return {
+      sourceType: 'trip' as const,
+      id: trip.id,
+      name: trip.title,
+      description: trip.description,
+      image_url: trip.image_url,
+      price: trip.price != null ? Number(trip.price) : null,
+      duration_days: trip.duration_days,
+      location: trip.location,
+      start_date: trip.created_at,
+      companyName: tenant?.name ?? null,
+      missions,
+      topMissions,
+      extraMissionCount,
+    }
+  })
+
+  return tripCards
 }
 
-// 4. Fetch Single Tour Details for public and locked view
+// 4. Fetch single published trip template (marketplace preview)
 export async function getTourDetailsAction(id: string) {
   const supabase = await createClient()
-  
-  const { data, error } = await supabase
-    .from("sessions")
-    .select(`
-      *,
-      journey_days (
-        *,
-        journey_steps (*)
-      ),
-      session_missions (
-        missions (*)
-      )
-    `)
-    .eq("id", id)
-    .single()
 
-  if (error) {
-    console.error("⛔ Supabase Error inside getTourDetailsAction:", error.message)
+  const { data: trip, error: tripError } = await supabase
+    .from('trips')
+    .select(
+      `
+      *,
+      tenants ( name ),
+      trip_missions (
+        missions (*)
+      ),
+      master_activities (
+        id,
+        name,
+        default_sequence_order
+      )
+    `,
+    )
+    .eq('id', id)
+    .eq('is_published', true)
+    .maybeSingle()
+
+  if (tripError || !trip) {
+    if (tripError) {
+      console.error('⛔ getTourDetailsAction trip:', tripError.message)
+    }
     return null
   }
 
-  if (data) {
-    data.missions = data.session_missions?.map((sm: any) => sm.missions).filter(Boolean) || []
-    delete data.session_missions
+  const missionList = extractMissionsFromTripJoin(
+    trip.trip_missions as { missions: unknown }[],
+  )
+  const { missions } = formatTourCardMissions(missionList)
+  const activities = [...(trip.master_activities ?? [])].sort(
+    (a, b) => a.default_sequence_order - b.default_sequence_order,
+  )
 
-    if (data.journey_days) {
-      data.journey_days.sort((a: { day_number?: number }, b: { day_number?: number }) =>
-        (a.day_number || 0) - (b.day_number || 0)
-      );
-      data.journey_days.forEach((day: { journey_steps?: { step_order?: number; time_slot?: string; time?: string }[] }) => {
-        if (day.journey_steps) {
-          day.journey_steps.sort(
-            (a, b) =>
-              (a.step_order || 0) - (b.step_order || 0) ||
-              String(a.time_slot || a.time || "").localeCompare(
-                String(b.time_slot || b.time || "")
-              )
-          );
-        }
-      });
-    }
+  const journey_days = [
+    {
+      id: 'trip-itinerary',
+      day_number: 1,
+      title: trip.duration_days
+        ? `${trip.duration_days}-day expedition preview`
+        : 'Itinerary preview',
+      journey_steps: activities.map((act, stepIdx) => ({
+        id: act.id,
+        title: act.name,
+        step_order: stepIdx,
+        time_slot: '',
+      })),
+    },
+  ]
+
+  const tenantRaw = trip.tenants as unknown
+  const tenant = (Array.isArray(tenantRaw) ? tenantRaw[0] : tenantRaw) as {
+    name?: string
+  } | null
+
+  return {
+    sourceType: 'trip' as const,
+    id: trip.id,
+    name: trip.title,
+    description: trip.description,
+    image_url: trip.image_url,
+    price: trip.price != null ? Number(trip.price) : null,
+    duration_days: trip.duration_days,
+    location: trip.location,
+    start_date: trip.created_at,
+    companyName: tenant?.name ?? null,
+    missions,
+    journey_days,
+    isTripTemplate: true,
   }
-
-  return data;
 }
 
-export async function enrollTourAction(inviteCode: string, tourId: string) {
+/** Clears legacy auth metadata so tourist re-joins with room_code. */
+export async function clearLegacySessionMetadataAction() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  const meta = user.user_metadata ?? {};
+  if (!meta.session_id && meta.room_id) {
+    return { success: true as const, cleared: false };
+  }
+
+  const { error } = await supabase.auth.updateUser({
+    data: {
+      ...meta,
+      session_id: null,
+      room_id: meta.room_id ?? null,
+      trip_id: meta.trip_id ?? null,
+    },
+  });
+
+  if (error) return { error: error.message };
+  const { revalidatePath } = await import("next/cache");
+  revalidatePath("/");
+  return { success: true as const, cleared: true };
+}
+
+/** Join live expedition via moderator-issued room code (SDD dashboard flow). */
+export async function joinRoomByCodeAction(roomCode: string) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (!user) return { error: "Unauthorized" }
+  if (!user) return { error: 'Unauthorized' }
 
-  const { data: session, error } = await supabase
-    .from("sessions")
-    .select("id")
-    .eq("invite_code", inviteCode)
-    .eq("id", tourId)
-    .eq("is_active", true)
-    .single()
+  const trimmed = roomCode.trim()
+  if (!trimmed) return { error: 'Enter your expedition code' }
 
-  if (error || !session) {
-    return { error: "Invalid invite code" }
+  const { data, error } = await supabase.rpc('join_room_by_code', {
+    p_room_code: trimmed,
+  })
+
+  if (error) {
+    console.error('⛔ join_room_by_code:', error.message)
+    const msg = error.message.includes('Invalid room code')
+      ? 'Invalid expedition code'
+      : error.message
+    return { error: msg }
+  }
+
+  const payload = data as { room_id?: string; trip_id?: string; room_code?: string } | null
+  if (!payload?.room_id) {
+    return { error: 'Could not join expedition' }
   }
 
   const { error: updateError } = await supabase.auth.updateUser({
-    data: { session_id: session.id }
+    data: {
+      room_id: payload.room_id,
+      trip_id: payload.trip_id ?? null,
+      session_id: null,
+    },
   })
 
   if (updateError) {
-    console.error("⛔ Error updating user session_id:", updateError)
-    return { error: "Failed to enroll" }
+    console.error('⛔ joinRoom metadata:', updateError.message)
+    return { error: 'Joined room but failed to save profile state' }
   }
 
-  const { revalidatePath } = await import("next/cache")
-  revalidatePath(`/tours/${tourId}`)
-  
-  return { success: true }
+  const { revalidatePath } = await import('next/cache')
+  revalidatePath('/')
+  revalidatePath('/tours')
+
+  return {
+    success: true as const,
+    roomId: payload.room_id,
+    tripId: payload.trip_id ?? null,
+    roomCode: payload.room_code ?? trimmed,
+  }
 }
 
-export async function getTouristActiveSessionAction(sessionId: string) {
-  const supabase = await createClient();
-  
-  const { data: session, error } = await supabase
-    .from('sessions')
-    .select(`
-      *,
-      journey_days (
-        *,
-        journey_steps (*)
+async function resolveActiveRoomId(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  metadataRoomId?: string | null,
+) {
+  if (metadataRoomId) return metadataRoomId
+
+  const { data: membership } = await supabase
+    .from('room_members')
+    .select('room_id')
+    .eq('profile_id', userId)
+    .order('joined_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  return membership?.room_id ?? null
+}
+
+/** Active expedition for dashboard — rooms + live room_activities timeline. */
+export async function getTouristActiveRoomAction(
+  userId: string,
+  metadataRoomId?: string | null,
+) {
+  const supabase = await createClient()
+  const roomId = await resolveActiveRoomId(supabase, userId, metadataRoomId)
+  if (!roomId) return null
+
+  const { data: room, error: roomError } = await supabase
+    .from('rooms')
+    .select(
+      `
+      id,
+      room_code,
+      trip_id,
+      status,
+      trips (
+        title,
+        location,
+        image_url,
+        description
+      ),
+      room_activities (
+        id,
+        name,
+        sequence_order,
+        status
       )
-    `)
-    .eq('id', sessionId)
-    .single();
+    `,
+    )
+    .eq('id', roomId)
+    .maybeSingle()
 
-  if (error || !session) {
-    return null;
+  if (roomError || !room) {
+    console.error('⛔ getTouristActiveRoomAction:', roomError?.message)
+    return null
   }
 
-  // Pre-sort days and steps
-  if (session.journey_days) {
-    session.journey_days.sort((a: any, b: any) => a.day_number - b.day_number);
-    session.journey_days.forEach((day: any) => {
-      if (day.journey_steps) {
-        day.journey_steps.sort((a: any, b: any) => (a.time_slot || '').localeCompare(b.time_slot || ''));
-      }
-    });
+  const tripRaw = room.trips as unknown
+  const trip = (Array.isArray(tripRaw) ? tripRaw[0] : tripRaw) as {
+    title: string
+    location?: string | null
+    image_url?: string | null
+  } | null
+
+  const activities = (room.room_activities ?? []) as {
+    id: string
+    name: string
+    sequence_order: number
+    status: string
+  }[]
+
+  return mapRoomToActiveExpedition({
+    room: { id: room.id, room_code: room.room_code, trip_id: room.trip_id },
+    trip,
+    activities,
+  })
+}
+
+/** Tourist marks an in-progress agenda stop complete (guide must start it first). */
+export async function completeRoomActivityAction(
+  userId: string,
+  activityId: string,
+) {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase.rpc('tourist_complete_room_activity', {
+    p_activity_id: activityId,
+  })
+
+  if (error) {
+    return { success: false as const, error: error.message }
   }
 
-  return session;
+  const payload = data as { xp_reward?: number } | null
+  const xp = Number(payload?.xp_reward ?? 25)
+
+  return grantUserRewardsAction(userId, xp, 0)
 }
 
 export async function grantUserRewardsAction(userId: string, baseXp: number, basePoints: number) {
@@ -283,34 +511,9 @@ export async function completeQuestAction(userId: string, questId: string) {
   return grantUserRewardsAction(userId, baseXp, basePoints);
 }
 
-/** Mission / journey-step completion (XP from step; optional Shagai if point_reward exists). */
+/** @deprecated Use completeRoomActivityAction — kept for API routes still on journey_steps. */
 export async function completeJourneyStepAction(userId: string, stepId: string) {
-  const supabase = await createClient();
-
-  const { data: step, error: stepError } = await supabase
-    .from('journey_steps')
-    .select('id, xp_reward, status')
-    .eq('id', stepId)
-    .single();
-
-  if (stepError || !step) {
-    return { success: false, error: 'Mission step not found' };
-  }
-
-  if (step.status === 'completed') {
-    return { success: false, error: 'Step already completed' };
-  }
-
-  const { error: stepUpdateError } = await supabase
-    .from('journey_steps')
-    .update({ status: 'completed' })
-    .eq('id', stepId);
-
-  if (stepUpdateError) {
-    return { success: false, error: 'Failed to record step completion' };
-  }
-
-  return grantUserRewardsAction(userId, step.xp_reward || 0, 0);
+  return completeRoomActivityAction(userId, stepId)
 }
 
 export async function claimDailyCheckinAction(userId: string) {

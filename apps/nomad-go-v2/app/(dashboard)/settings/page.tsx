@@ -1,9 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { trpc } from "@/providers/trpc";
+import { IosInstallGuide } from "@/components/IosInstallGuide";
+import { canShowIosInstallGuide } from "@/lib/pwa/iosInstall";
 import {
   Settings as SettingsIcon,
   Volume2,
@@ -14,6 +16,8 @@ import {
   LogOut,
   Trash2,
   Info,
+  Smartphone,
+  ChevronRight,
 } from "lucide-react";
 
 export default function Settings() {
@@ -30,6 +34,12 @@ export default function Settings() {
   const [notifications, setNotifications] = useState(true);
   const [darkMode, setDarkMode] = useState(true);
   const [locationSharing, setLocationSharing] = useState(true);
+  const [showIosGuide, setShowIosGuide] = useState(false);
+  const [showIosInstallSection, setShowIosInstallSection] = useState(false);
+
+  useEffect(() => {
+    setShowIosInstallSection(canShowIosInstallGuide());
+  }, []);
 
   if (!user) {
     return (
@@ -78,6 +88,39 @@ export default function Settings() {
             </Button>
           </div>
         </div>
+
+        {showIosInstallSection ? (
+          <div className="bg-gradient-to-r from-emerald-500/10 to-[#A8C69F]/10 rounded-xl border border-emerald-500/25 p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
+                <Smartphone className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white">
+                  Install on iPhone / iPad
+                </p>
+                <p className="text-xs text-[#A0A0B0] mt-1">
+                  Add Nomad-Go to your home screen via Safari.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowIosGuide(true)}
+                  className="mt-3 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 hover:text-emerald-200"
+                >
+                  View install guide
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <IosInstallGuide
+          open={showIosGuide}
+          onOpenChange={setShowIosGuide}
+          persistDismiss={false}
+        />
 
         {/* Preferences */}
         <div className="bg-[#322F36]/80 rounded-xl border border-[#322F36] mb-6">

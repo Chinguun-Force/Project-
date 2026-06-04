@@ -27,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { ReactNode } from "react";
+import { ShagaiIcon } from "@/components/ShagaiIcon";
 
 const navItems = [
   { path: "/", label: "Dashboard", icon: Compass },
@@ -36,21 +37,10 @@ const navItems = [
   { path: "/map", label: "Map", icon: Map },
 ];
 
-const ShagaiIcon = ({ className }: { className?: string }) => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    className={className}
-  >
-    <path d="M7 6C5 6 4 7 4 9C4 11 5 13 8 13C10 13 11 15 11 17C11 19 13 20 15 20C17 20 19 19 19 17C19 15 17 14 15 14C12 14 10 12 10 9C10 7 12 6 15 6C17 6 18 5 18 3C18 1.5 16 1.5 14 3C12 4.5 10 4 7 4" />
-  </svg>
-);
-
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
-  const { canAccessAdmin, canAccessModerator, role } = useUserRole();
+  const { role, loading: roleLoading, isStaffRole, showModeratorPanelNav, showAdminPanelNav } =
+    useUserRole();
   const { userStats, refreshStats } = useUserStats();
   const pathname = usePathname();
   const router = useRouter();
@@ -69,14 +59,30 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
   }, [user?.id, pathname, refreshStats]);
 
-  const staffNav = [
-    ...(canAccessModerator
+  const staffPanelNav = [
+    ...(showModeratorPanelNav
       ? [{ path: "/moderator", label: "Moderator", icon: UserCog }]
       : []),
-    ...(canAccessAdmin
-      ? [{ path: "/admin", label: "Admin", icon: Shield }]
-      : []),
+    ...(showAdminPanelNav ? [{ path: "/admin", label: "Admin", icon: Shield }] : []),
   ];
+
+  const homePath =
+    role === "moderator"
+      ? "/moderator"
+      : role === "admin"
+        ? "/admin"
+        : role === "guide"
+          ? "/guide"
+          : "/";
+
+  const primaryNav =
+    user && roleLoading
+      ? []
+      : isStaffRole
+        ? staffPanelNav
+        : navItems;
+
+  const staffNav: typeof navItems = [];
 
   return (
     <div className="min-h-screen bg-[#1A1D26] text-white flex flex-col">
@@ -84,7 +90,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <div className="flex items-center justify-between px-4 py-3 max-w-7xl mx-auto w-full">
           <div
             className="flex items-center gap-2 cursor-pointer"
-            onClick={() => router.push("/")}
+            onClick={() => router.push(homePath)}
           >
             <Compass className="w-7 h-7 text-[#F4C64D]" />
             <span className="text-xl font-bold tracking-tight">
@@ -94,7 +100,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </div>
 
           <nav className="hidden md:flex items-center gap-1">
-            {navItems.map((item) => {
+            {primaryNav.map((item) => {
               const isActive = pathname === item.path;
               return (
                 <Button
@@ -139,7 +145,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#322F36]/80 border border-[#F4C64D]/20"
                   title="Shagai balance"
                 >
-                  <ShagaiIcon className="w-4 h-4 text-[#F4C64D]" />
+                  <ShagaiIcon size="sm" balance={pointsBalance} />
                   <span className="text-sm font-semibold text-[#F4C64D] tabular-nums">
                     {pointsBalance.toLocaleString()}
                   </span>
@@ -169,7 +175,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                       <p className="text-sm font-medium">{displayName}</p>
                       <p className="text-xs text-[#A0A0B0] capitalize">{role}</p>
                       <p className="text-xs text-[#F4C64D] mt-1 flex items-center gap-1">
-                        <ShagaiIcon className="w-3 h-3" />
+                        <ShagaiIcon size="xs" balance={pointsBalance} />
                         {pointsBalance.toLocaleString()} Shagai
                       </p>
                     </div>
@@ -188,7 +194,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                       <Settings className="w-4 h-4 mr-2" />
                       Settings
                     </DropdownMenuItem>
-                    {canAccessModerator && (
+                    {showModeratorPanelNav && !isStaffRole && (
                       <DropdownMenuItem
                         onClick={() => router.push("/moderator")}
                         className="cursor-pointer hover:bg-[#1A1D26] focus:bg-[#1A1D26]"
@@ -197,7 +203,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         Moderator Panel
                       </DropdownMenuItem>
                     )}
-                    {canAccessAdmin && (
+                    {showAdminPanelNav && !isStaffRole && (
                       <DropdownMenuItem
                         onClick={() => router.push("/admin")}
                         className="cursor-pointer hover:bg-[#1A1D26] focus:bg-[#1A1D26]"
@@ -233,7 +239,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
       <nav className="md:hidden sticky bottom-0 z-50 bg-[#1A1D26]/95 backdrop-blur-md border-t border-[#322F36]/50">
         <div className="flex items-center justify-around py-2">
-          {[...navItems, ...staffNav].map((item) => {
+          {[...primaryNav, ...staffNav].map((item) => {
             const isActive = pathname === item.path;
             return (
               <button

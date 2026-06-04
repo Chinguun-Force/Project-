@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { getQuestsAction, getMissionsAction, completeQuestAction } from "@/app/actions/gameActions";
+import { getQuestsAction, getMissionsAction } from "@/app/actions/gameActions";
+import { submitQuestOffline } from "@/lib/offline/submitQuest";
 import { createClient } from "@/utils/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserStats } from "@/hooks/useUserStats";
@@ -84,8 +85,6 @@ export default function Quests() {
       if (!userStats?.id) return;
       setIsLoading(true);
 
-      const sessionId = userStats.sessionId;
-
       const [rawQuests, rawMissions, userQuestsRes] = await Promise.all([
         getQuestsAction(),
         getMissionsAction(),
@@ -94,11 +93,9 @@ export default function Quests() {
 
       const completedIds = new Set(userQuestsRes.data?.map((uq) => uq.quest_id) || []);
 
-      const sessionMissions = rawMissions.filter(
-        (m) => !m.session_id || m.session_id === sessionId
-      );
+      const sessionMissions = rawMissions.filter((m) => !m.session_id);
       const availableQuests = rawQuests.filter(
-        (q) => q.status === "available" && (!q.session_id || q.session_id === sessionId)
+        (q) => q.status === "available" && (!q.session_id || q.is_casual !== false),
       );
 
       setMissions(
@@ -130,7 +127,13 @@ export default function Quests() {
     };
 
     fetchQuestsAndMissions();
-  }, [userStats?.id, userStats?.sessionId, supabase]);
+  }, [userStats?.id, supabase]);
+
+  useEffect(() => {
+    const onRefresh = () => refreshStats();
+    window.addEventListener("nomad:stats-refresh", onRefresh);
+    return () => window.removeEventListener("nomad:stats-refresh", onRefresh);
+  }, [refreshStats]);
 
   const handleQuestComplete = async (
     questId: string,
@@ -155,17 +158,21 @@ export default function Quests() {
     );
 
     startTransition(async () => {
-      const dbResult = await completeQuestAction(userId, questId);
+      const roomId =
+        (user?.user_metadata?.room_id as string | undefined) ?? null;
+      const { synced, error } = await submitQuestOffline(userId, questId, {
+        roomId,
+      });
 
-      if (dbResult?.success) {
-        const newLevel =
-          "newLevel" in dbResult && dbResult.newLevel != null
-            ? dbResult.newLevel
-            : currentLevel;
-        const hasLeveledUp =
-          "hasLeveledUp" in dbResult && dbResult.hasLeveledUp === true;
-
-        if (hasLeveledUp) {
+      if (synced) {
+        await refreshStats();
+        const statsRes = await supabase
+          .from("users")
+          .select("level")
+          .eq("id", userId)
+          .single();
+        const newLevel = Number(statsRes.data?.level ?? currentLevel);
+        if (newLevel > currentLevel) {
           setCalibrationData({
             oldRank,
             newRank: getMongolianRank(newLevel),
@@ -174,19 +181,14 @@ export default function Quests() {
           });
           setShowCalibration(true);
         }
-
-        await refreshStats();
         router.refresh();
+      } else if (!error) {
+        toast.info("Saved offline — rewards sync when you're back online.");
       } else {
-        toast.error(
-          "error" in dbResult && dbResult.error
-            ? String(dbResult.error)
-            : "Could not complete quest."
-        );
+        toast.error(error ?? "Could not complete quest.");
         setQuests((prev) =>
           prev.map((q) => (q.id === questId ? { ...q, isCompleted: false } : q))
         );
-        await refreshStats();
       }
     });
   };

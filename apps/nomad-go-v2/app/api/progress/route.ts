@@ -3,14 +3,10 @@ import { NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { getSupabaseConfig } from '@/utils/supabase/config';
 
-// GET /api/progress?sessionId=...
+// GET /api/progress?roomId=... (sessionId accepted but deprecated)
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const sessionId = searchParams.get('sessionId');
-
-  if (!sessionId) {
-    return NextResponse.json({ error: 'sessionId is required' }, { status: 400 });
-  }
+  const roomId = searchParams.get('roomId') ?? searchParams.get('sessionId');
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -44,6 +40,7 @@ export async function GET(req: Request) {
     available_points: profile?.points || 0,
     completed_quests: profile?.completed_quests || 0,
     avatar_url: profile?.avatar_url || null,
-    sessionId,
+    roomId: roomId ?? null,
+    deprecatedSessionId: searchParams.get('sessionId') ?? null,
   });
 }
