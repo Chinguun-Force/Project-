@@ -12,6 +12,17 @@ import { motion, AnimatePresence } from "framer-motion";
 import { characters, countries } from "@/data/characters";
 import { User, Check, Mail, Lock, Calendar, MapPin, ChevronRight, ChevronLeft } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
+import { NomadBootScreen } from "@/components/NomadBootScreen";
+import {
+  markPostLoginBoot,
+  waitMinBoot,
+} from "@/lib/auth/postLoginBoot";
+import {
+  getTouristActiveRoomAction,
+  getUserProgressAction,
+} from "@/app/actions/gameActions";
+
+type BootPhase = "idle" | "creating" | "preparing";
 
 export default function Signup() {
   const [step, setStep] = useState(1);
@@ -24,7 +35,7 @@ export default function Signup() {
     origin: "",
     age: "",
   });
-  const [loading, setLoading] = useState(false);
+  const [bootPhase, setBootPhase] = useState<BootPhase>("idle");
   const { signup } = useAuth();
   const router = useRouter();
 
@@ -53,24 +64,63 @@ export default function Signup() {
       return;
     }
 
-    setLoading(true);
-    const { error, success } = await signup({
+    setBootPhase("creating");
+    const started = Date.now();
+
+    const { error, success, userId } = await signup({
       ...formData,
-      age: parseInt(formData.age, 10)
+      age: parseInt(formData.age, 10),
     });
-    setLoading(false);
 
     if (error) {
+      setBootPhase("idle");
       toast.error(error);
-    } else if (success) {
-      toast.success("Successfully signed up! Redirecting...");
-      router.push("/");
+      return;
     }
+
+    if (!success) {
+      setBootPhase("idle");
+      return;
+    }
+
+    setBootPhase("preparing");
+    markPostLoginBoot();
+
+    const prefetch = userId
+      ? Promise.all([
+          getUserProgressAction(userId),
+          getTouristActiveRoomAction(userId),
+        ])
+      : Promise.resolve();
+
+    await Promise.all([prefetch, waitMinBoot(Math.max(0, 700 - (Date.now() - started)))]);
+
+    router.push("/");
+    router.refresh();
   };
 
   const selectedCharacter = characters.find((c) => c.id === formData.character);
 
+  const bootMessage =
+    bootPhase === "creating"
+      ? "Creating your legend"
+      : bootPhase === "preparing"
+        ? "Loading your expedition"
+        : undefined;
+
   return (
+    <>
+      {bootPhase !== "idle" ? (
+        <NomadBootScreen
+          message={bootMessage}
+          submessage={
+            bootPhase === "creating"
+              ? "Forging your character on the steppe…"
+              : "Preparing your first journey…"
+          }
+        />
+      ) : null}
+
     <div className="min-h-screen flex items-center justify-center bg-[#1A1D26] p-4 font-sans">
       <div className="w-full max-w-md">
         
@@ -239,10 +289,14 @@ export default function Signup() {
                   </Button>
                   <Button
                     onClick={handleSignup}
-                    disabled={loading}
+                    disabled={bootPhase !== "idle"}
                     className="flex-1 bg-[#A8C69F] hover:bg-[#8eb084] text-[#1A1D26] font-bold"
                   >
-                    {loading ? <Spinner className="w-4 h-4" /> : "Complete Setup"}
+                    {bootPhase !== "idle" ? (
+                      <Spinner className="w-4 h-4" />
+                    ) : (
+                      "Complete Setup"
+                    )}
                   </Button>
                 </div>
               </motion.div>
@@ -261,5 +315,6 @@ export default function Signup() {
 
       </div>
     </div>
+    </>
   );
 }

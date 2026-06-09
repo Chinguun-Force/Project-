@@ -11,9 +11,9 @@ export function useUserStats() {
   const [isLoading, setIsLoading] = useState(true);
   const supabase = createClient();
 
-  const fetchStats = useCallback(async () => {
+  const fetchStats = useCallback(async (options?: { silent?: boolean }) => {
     if (!authUser?.id) return;
-    setIsLoading(true);
+    if (!options?.silent) setIsLoading(true);
     const { data, error } = await supabase
       .from("users")
       .select("*")
@@ -82,6 +82,6 @@ export function useUserStats() {
     isLoading,
     completeQuest,
     completeMission,
-    refreshStats: fetchStats,
+    refreshStats: () => fetchStats({ silent: true }),
   };
 }

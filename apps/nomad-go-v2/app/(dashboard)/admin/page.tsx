@@ -29,6 +29,16 @@ import {
   Save,
   Building2,
 } from "lucide-react";
+import QuestTypeConfigForm, {
+  createInitialQuestConfig,
+} from "@/components/admin/QuestTypeConfigForm";
+import { buildQuestDataPayload } from "@/lib/quest/buildQuestDataPayload";
+import {
+  DEFAULT_QUEST_CONFIG,
+  validateQuestConfig,
+  type AdminQuestExecutionType,
+  type QuestConfigDraft,
+} from "@/lib/quest/questAdminTypes";
 
 const roleColors: Record<string, string> = {
   admin: "bg-red-500/20 text-red-400 border-red-500/30",
@@ -75,7 +85,16 @@ export default function Admin() {
 
   // Form states
   const [missionForm, setMissionForm] = useState({ title: "", description: "", imageUrl: "", xpReward: 100, latitude: 47.92, longitude: 106.92, radiusMeters: 50 });
-  const [questForm, setQuestForm] = useState({ title: "", description: "", type: "quiz", pointReward: 50, difficulty: "easy", isCasual: true, missionId: "", questData: "{}" });
+  const [questForm, setQuestForm] = useState({
+    title: "",
+    description: "",
+    executionType: "QUIZ" as AdminQuestExecutionType,
+    pointReward: 50,
+    difficulty: "easy",
+    isCasual: true,
+    missionId: "",
+    config: createInitialQuestConfig(),
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -188,23 +207,52 @@ export default function Admin() {
     }
   };
 
+  const handleExecutionTypeChange = (executionType: AdminQuestExecutionType) => {
+    setQuestForm((prev) => ({
+      ...prev,
+      executionType,
+      config: structuredClone(DEFAULT_QUEST_CONFIG),
+    }));
+  };
+
   const handleCreateQuest = async () => {
-    if (!questForm.title) return toast.error("Title is required");
-    if (!questForm.isCasual && !questForm.missionId) return toast.error("Mission ID required for Location-Locked Quest");
-    let parsedData = {};
-    try {
-      parsedData = JSON.parse(questForm.questData);
-    } catch (e) {
-      return toast.error("Invalid JSON in Quest Data");
+    if (!questForm.title.trim()) return toast.error("Title is required");
+    if (!questForm.isCasual && !questForm.missionId) {
+      return toast.error("Select a mission for location-locked quests");
     }
-    
+
+    const validationError = validateQuestConfig(questForm.executionType, questForm.config);
+    if (validationError) return toast.error(validationError);
+
     setIsSubmitting(true);
     try {
-      await createQuest({ ...questForm, questData: parsedData, missionId: questForm.missionId || null });
+      const built = await buildQuestDataPayload(questForm.executionType, questForm.config);
+      await createQuest({
+        title: questForm.title,
+        description: questForm.description,
+        dbType: built.dbType,
+        pointReward: questForm.pointReward,
+        difficulty: questForm.difficulty,
+        isCasual: questForm.isCasual,
+        missionId: questForm.missionId || null,
+        questData: built.questData,
+        validationCode: built.validationCode,
+      });
       toast.success("Quest created successfully!");
-      setQuestForm({ title: "", description: "", type: "quiz", pointReward: 50, difficulty: "easy", isCasual: true, missionId: "", questData: "{}" });
-    } catch (err: any) {
-      toast.error(err.message);
+      setQuestForm({
+        title: "",
+        description: "",
+        executionType: "QUIZ",
+        pointReward: 50,
+        difficulty: "easy",
+        isCasual: true,
+        missionId: "",
+        config: createInitialQuestConfig(),
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to create quest";
+      console.error("Admin createQuest failed:", err);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -509,71 +557,133 @@ export default function Admin() {
             {/* QUESTS TAB */}
             {activeTab === "quests" && (
               <div className="max-w-xl mx-auto">
-                <h2 className="text-xl font-bold text-white mb-4">Create New Quest (Gamified Task)</h2>
-                <div className="space-y-4">
+                <h2 className="text-xl font-bold text-white mb-1">Create New Quest</h2>
+                <p className="text-sm text-[#6b7280] mb-4">
+                  Config maps directly to offline execution engine (`quest_data` JSON).
+                </p>
+                <div className="space-y-4 rounded-2xl border border-[#322F36] bg-[#252830]/40 p-5">
                   <div>
                     <label className="text-sm text-[#A0A0B0]">Quest Title</label>
-                    <Input value={questForm.title} onChange={e => setQuestForm({...questForm, title: e.target.value})} className="bg-[#1A1D26] border-[#322F36] text-white mt-1" />
+                    <Input
+                      value={questForm.title}
+                      onChange={(e) => setQuestForm({ ...questForm, title: e.target.value })}
+                      className="bg-[#1A1D26] border-[#322F36] text-white mt-1 focus-visible:ring-emerald-500/40"
+                    />
                   </div>
                   <div>
                     <label className="text-sm text-[#A0A0B0]">Description</label>
-                    <textarea value={questForm.description} onChange={e => setQuestForm({...questForm, description: e.target.value})} className="w-full rounded-md bg-[#1A1D26] border border-[#322F36] text-white p-2 mt-1 min-h-[80px]" />
+                    <textarea
+                      value={questForm.description}
+                      onChange={(e) =>
+                        setQuestForm({ ...questForm, description: e.target.value })
+                      }
+                      className="w-full rounded-md bg-[#1A1D26] border border-[#322F36] text-white p-2 mt-1 min-h-[80px] focus:outline-none focus:border-emerald-500/50"
+                    />
                   </div>
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
-                      <label className="text-sm text-[#A0A0B0]">Type</label>
-                      <select value={questForm.type} onChange={e => setQuestForm({...questForm, type: e.target.value})} className="w-full h-10 mt-1 bg-[#1A1D26] text-white rounded-md border border-[#322F36] px-3">
-                        <option value="quiz">Quiz</option>
-                        <option value="photo">Photo</option>
-                        <option value="action">Action</option>
+                      <label className="text-sm text-[#A0A0B0]">Execution Type</label>
+                      <select
+                        value={questForm.executionType}
+                        onChange={(e) =>
+                          handleExecutionTypeChange(e.target.value as AdminQuestExecutionType)
+                        }
+                        className="w-full h-10 mt-1 bg-[#1A1D26] text-white rounded-md border border-[#322F36] px-3 focus:outline-none focus:border-emerald-500/50"
+                      >
+                        <option value="PHOTO">PHOTO</option>
+                        <option value="AUDIO">AUDIO</option>
+                        <option value="QR_SCAN">QR_SCAN</option>
+                        <option value="QUIZ">QUIZ</option>
+                        <option value="CHOICE">CHOICE</option>
+                        <option value="TIME_BOUND">TIME_BOUND</option>
                       </select>
                     </div>
                     <div>
                       <label className="text-sm text-[#A0A0B0]">Points</label>
-                      <Input type="number" value={questForm.pointReward} onChange={e => setQuestForm({...questForm, pointReward: parseInt(e.target.value) || 0})} className="bg-[#1A1D26] border-[#322F36] text-white mt-1" />
+                      <Input
+                        type="number"
+                        min={0}
+                        value={questForm.pointReward}
+                        onChange={(e) =>
+                          setQuestForm({
+                            ...questForm,
+                            pointReward: parseInt(e.target.value, 10) || 0,
+                          })
+                        }
+                        className="bg-[#1A1D26] border-[#322F36] text-white mt-1 focus-visible:ring-emerald-500/40"
+                      />
                     </div>
                     <div>
                       <label className="text-sm text-[#A0A0B0]">Difficulty</label>
-                      <select value={questForm.difficulty} onChange={e => setQuestForm({...questForm, difficulty: e.target.value})} className="w-full h-10 mt-1 bg-[#1A1D26] text-white rounded-md border border-[#322F36] px-3">
+                      <select
+                        value={questForm.difficulty}
+                        onChange={(e) =>
+                          setQuestForm({ ...questForm, difficulty: e.target.value })
+                        }
+                        className="w-full h-10 mt-1 bg-[#1A1D26] text-white rounded-md border border-[#322F36] px-3 focus:outline-none focus:border-emerald-500/50"
+                      >
                         <option value="easy">Easy</option>
                         <option value="medium">Medium</option>
                         <option value="hard">Hard</option>
                       </select>
                     </div>
                   </div>
-                  
-                  <div className="flex items-center gap-4 mb-4 mt-2">
+
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                     <label className="text-sm text-white flex items-center gap-2 cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={questForm.isCasual} 
-                        onChange={e => setQuestForm({...questForm, isCasual: e.target.checked})} 
-                        className="w-4 h-4"
+                      <input
+                        type="checkbox"
+                        checked={questForm.isCasual}
+                        onChange={(e) =>
+                          setQuestForm({ ...questForm, isCasual: e.target.checked })
+                        }
+                        className="w-4 h-4 accent-emerald-500"
                       />
-                      Is Casual Quest?
+                      Casual quest (global)
                     </label>
                     {!questForm.isCasual && (
                       <div className="flex-1">
-                        <select 
-                          value={questForm.missionId} 
-                          onChange={e => setQuestForm({...questForm, missionId: e.target.value})} 
-                          className="w-full h-10 bg-[#1A1D26] text-white rounded-md border border-[#322F36] px-3"
+                        <select
+                          value={questForm.missionId}
+                          onChange={(e) =>
+                            setQuestForm({ ...questForm, missionId: e.target.value })
+                          }
+                          className="w-full h-10 bg-[#1A1D26] text-white rounded-md border border-[#322F36] px-3 focus:outline-none focus:border-emerald-500/50"
                         >
-                          <option value="">Select Linked Mission...</option>
-                          {missions.map(m => (
-                            <option key={m.id} value={m.id}>{m.title}</option>
+                          <option value="">Select linked mission…</option>
+                          {missions.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.title}
+                            </option>
                           ))}
                         </select>
                       </div>
                     )}
                   </div>
 
-                  <div>
-                    <label className="text-sm text-[#A0A0B0]">Quest Metadata (JSON)</label>
-                    <textarea value={questForm.questData} onChange={e => setQuestForm({...questForm, questData: e.target.value})} className="w-full rounded-md bg-[#1A1D26] border border-[#322F36] text-white p-2 mt-1 min-h-[100px] font-mono text-sm" placeholder='{"question": "What is..."}' />
-                  </div>
-                  <Button onClick={handleCreateQuest} disabled={isSubmitting} className="w-full bg-[#F2994A] text-[#1A1D26] font-bold mt-4">
-                    <Save className="w-4 h-4 mr-2" /> Create Quest
+                  <QuestTypeConfigForm
+                    executionType={questForm.executionType}
+                    config={questForm.config}
+                    onChange={(config: QuestConfigDraft) =>
+                      setQuestForm({ ...questForm, config })
+                    }
+                  />
+
+                  <Button
+                    onClick={handleCreateQuest}
+                    disabled={isSubmitting}
+                    className="w-full bg-emerald-500 hover:bg-emerald-400 text-[#0f1419] font-bold mt-2"
+                  >
+                    {isSubmitting ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="w-4 h-4 border-2 border-[#0f1419]/30 border-t-[#0f1419] rounded-full animate-spin" />
+                        Creating…
+                      </span>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-2" /> Create Quest
+                      </>
+                    )}
                   </Button>
                 </div>
               </div>

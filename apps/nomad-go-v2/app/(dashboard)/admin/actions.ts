@@ -242,24 +242,43 @@ export async function getMissions() {
   return data;
 }
 
-export async function createQuest(payload: {
+export type CreateQuestPayload = {
   title: string;
   description: string;
-  type: string;
+  /** Supabase `quests.type` (photo, quiz, choice, action, timer). */
+  dbType: string;
   pointReward: number;
   difficulty: string;
   isCasual: boolean;
   missionId: string | null;
-  questData: any;
-}) {
+  /** Typed JSON for the matching `quest_data.*_data` column. */
+  questData: Record<string, unknown>;
+  validationCode?: string | null;
+};
+
+export async function createQuest(payload: CreateQuestPayload) {
   const supabase = getAdminSupabase();
 
-  const { data: questData, error: questError } = await supabase
+  const dataColumn = `${payload.dbType}_data`;
+  if (!["photo", "quiz", "choice", "action", "timer"].includes(payload.dbType)) {
+    throw new Error(`Unsupported quest type: ${payload.dbType}`);
+  }
+
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(payload.questData);
+    JSON.parse(serialized);
+  } catch (err) {
+    console.error("createQuest: quest_data JSON serialization failed", err, payload.questData);
+    throw new Error("Quest configuration could not be serialized. Check field values.");
+  }
+
+  const { data: questRow, error: questError } = await supabase
     .from("quests")
     .insert({
-      title: payload.title,
-      description: payload.description,
-      type: payload.type,
+      title: payload.title.trim(),
+      description: payload.description.trim(),
+      type: payload.dbType,
       point_reward: payload.pointReward,
       difficulty: payload.difficulty,
       is_casual: payload.isCasual,
@@ -272,14 +291,25 @@ export async function createQuest(payload: {
 
   if (questError) throw new Error(questError.message);
 
-  const { error: dataError } = await supabase.from("quest_data").insert({
-    quest_id: questData.id,
-    [payload.type + "_data"]: payload.questData,
-  });
+  const questDataInsert: Record<string, unknown> = {
+    quest_id: questRow.id,
+    [dataColumn]: JSON.parse(serialized),
+  };
+  if (payload.validationCode) {
+    questDataInsert.validation_code = payload.validationCode;
+  }
 
-  if (dataError) throw new Error(dataError.message);
+  const { error: dataError } = await supabase.from("quest_data").insert(questDataInsert);
 
-  return { success: true };
+  if (dataError) {
+    console.error("createQuest: quest_data insert failed", dataError.message, questDataInsert);
+    throw new Error(dataError.message);
+  }
+
+  revalidatePath("/quests");
+  revalidatePath("/admin");
+
+  return { success: true, questId: questRow.id };
 }
 
 export async function getGuides() {

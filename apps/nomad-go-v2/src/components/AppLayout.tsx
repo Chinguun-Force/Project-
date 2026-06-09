@@ -28,6 +28,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { ReactNode } from "react";
 import { ShagaiIcon } from "@/components/ShagaiIcon";
+import { NomadBootScreen } from "@/components/NomadBootScreen";
+import {
+  clearPostLoginBoot,
+  shouldShowPostLoginBoot,
+} from "@/lib/auth/postLoginBoot";
 
 const navItems = [
   { path: "/", label: "Dashboard", icon: Compass },
@@ -38,10 +43,10 @@ const navItems = [
 ];
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, logout, isLoading: authLoading } = useAuth();
   const { role, loading: roleLoading, isStaffRole, showModeratorPanelNav, showAdminPanelNav } =
     useUserRole();
-  const { userStats, refreshStats } = useUserStats();
+  const { userStats, refreshStats, isLoading: statsLoading } = useUserStats();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -58,6 +63,25 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       refreshStats();
     }
   }, [user?.id, pathname, refreshStats]);
+
+  const postLoginBoot = shouldShowPostLoginBoot();
+  const shellBooting =
+    authLoading || (postLoginBoot && user && (roleLoading || statsLoading));
+
+  useEffect(() => {
+    if (postLoginBoot && user && !roleLoading && !statsLoading && !authLoading) {
+      clearPostLoginBoot();
+    }
+  }, [postLoginBoot, user, roleLoading, statsLoading, authLoading]);
+
+  if (shellBooting) {
+    return (
+      <NomadBootScreen
+        message={authLoading ? "Restoring your session" : "Loading your expedition"}
+        submessage="Almost ready to explore Mongolia…"
+      />
+    );
+  }
 
   const staffPanelNav = [
     ...(showModeratorPanelNav

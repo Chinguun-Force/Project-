@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Camera, MapPin, HelpCircle, Hand, ChevronDown, ChevronUp, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import QuestExecutionCard from "@/components/QuestExecutionCard";
+import type { QuestExecutionConfig } from "@/types/questExecution";
 
 interface QuestCardProps {
   id: string;
@@ -13,6 +15,11 @@ interface QuestCardProps {
   category: string;
   imageUrl: string | null;
   onComplete?: (payload: { baseXp: number; basePoints: number }) => void | Promise<void>;
+  /** Called after quest engine persisted locally (sync already queued). */
+  onExecutionComplete?: (payload: { baseXp: number; basePoints: number }) => void | Promise<void>;
+  executionConfig?: QuestExecutionConfig | null;
+  roomId?: string | null;
+  userId?: string | null;
 }
 
 const logicIcons: Record<string, typeof Camera> = {
@@ -47,9 +54,16 @@ export default function QuestCard({
   category,
   imageUrl,
   onComplete,
+  onExecutionComplete,
+  executionConfig,
+  roomId,
+  userId,
 }: QuestCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [showExecutor, setShowExecutor] = useState(false);
+  const effectiveRoomId = roomId?.trim() || "global";
+  const isInteractive = Boolean(executionConfig && userId);
 
   const Icon = logicIcons[logicType] ?? Hand;
   const catColor = categoryColors[category] ?? categoryColors.global;
@@ -114,33 +128,61 @@ export default function QuestCard({
           <p className="text-sm text-[#A0A0B0] mb-3">{description}</p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={handleComplete}
-            disabled={completing}
-            className="flex-1 bg-[#F4C64D] hover:bg-[#F4C64D]/90 text-[#1A1D26] font-semibold h-9"
-          >
-            {completing ? (
-              <span className="inline-flex items-center justify-center gap-2">
-                <Spinner className="w-4 h-4 text-[#1A1D26]" />
-              </span>
-            ) : (
-              "Complete Quest"
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setExpanded(!expanded)}
-            className="text-[#A0A0B0] hover:text-white hover:bg-[#1A1D26]/50 h-9 w-9 p-0"
-          >
-            {expanded ? (
-              <ChevronUp className="w-4 h-4" />
-            ) : (
-              <ChevronDown className="w-4 h-4" />
-            )}
-          </Button>
-        </div>
+        {isInteractive && showExecutor && executionConfig && userId ? (
+          <QuestExecutionCard
+            questId={id}
+            roomId={effectiveRoomId}
+            userId={userId}
+            title={title}
+            config={executionConfig}
+            className="mt-2"
+            onSuccess={() => {
+              setShowExecutor(false);
+              setCompleting(true);
+              const done = onExecutionComplete ?? onComplete;
+              void Promise.resolve(
+                done?.({ baseXp, basePoints })
+              ).finally(() => setCompleting(false));
+            }}
+          />
+        ) : (
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => {
+                if (isInteractive) {
+                  setShowExecutor(true);
+                  setExpanded(true);
+                } else {
+                  void handleComplete();
+                }
+              }}
+              disabled={completing}
+              className="flex-1 bg-[#F4C64D] hover:bg-[#F4C64D]/90 text-[#1A1D26] font-semibold h-9"
+            >
+              {completing ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <Spinner className="w-4 h-4 text-[#1A1D26]" />
+                </span>
+              ) : isInteractive ? (
+                "Execute Quest"
+              ) : (
+                "Complete Quest"
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setExpanded(!expanded)}
+              className="text-[#A0A0B0] hover:text-white hover:bg-[#1A1D26]/50 h-9 w-9 p-0"
+            >
+              {expanded ? (
+                <ChevronUp className="w-4 h-4" />
+              ) : (
+                <ChevronDown className="w-4 h-4" />
+              )}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -21,14 +21,15 @@ import {
 } from "@/lib/gamification";
 import { ShagaiIcon } from "@/components/ShagaiIcon";
 import { LegacySessionMigrateBanner } from "@/components/LegacySessionMigrateBanner";
+import { NomadBootScreen } from "@/components/NomadBootScreen";
 
 export default function Dashboard() {
   const { user } = useAuth();
   const router = useRouter();
   const utils = trpc.useUtils();
 
+  const [pageReady, setPageReady] = useState(false);
   const [activeExpedition, setActiveExpedition] = useState<any>(null);
-  const [isLoadingExpedition, setIsLoadingExpedition] = useState(true);
   const [roomCodeInput, setRoomCodeInput] = useState("");
   const [isJoining, setIsJoining] = useState(false);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
@@ -43,27 +44,8 @@ export default function Dashboard() {
   const [isGlow, setIsGlow] = useState(false);
   const [floatingLabels, setFloatingLabels] = useState<{id: number, text: string}[]>([]);
 
-  // Load User Progress native
-  useEffect(() => {
-    if (user && !isCheckingIn) {
-      getUserProgressAction(user.id).then(data => {
-        if (data) {
-          setLocalXp(data.totalXp);
-          setLocalCurrentXp(data.currentXp);
-          setLocalShagai(data.pointsBalance);
-          setLocalLevel(data.level);
-          setLocalXpThreshold(data.xpThreshold);
-        }
-      });
-    }
-  }, [user, isCheckingIn]);
-
   const loadActiveExpedition = async () => {
-    if (!user?.id) {
-      setIsLoadingExpedition(false);
-      return;
-    }
-    setIsLoadingExpedition(true);
+    if (!user?.id) return null;
     const roomId = user.user_metadata?.room_id as string | undefined;
     const data = await getTouristActiveRoomAction(user.id, roomId);
     setActiveExpedition(data);
@@ -74,12 +56,52 @@ export default function Dashboard() {
         /* IndexedDB optional */
       }
     }
-    setIsLoadingExpedition(false);
+    return data;
   };
 
   useEffect(() => {
-    loadActiveExpedition();
+    if (!user?.id) {
+      setPageReady(false);
+      return;
+    }
+
+    let cancelled = false;
+    setPageReady(false);
+
+    (async () => {
+      const [progress] = await Promise.all([
+        getUserProgressAction(user.id),
+        loadActiveExpedition(),
+      ]);
+
+      if (cancelled) return;
+
+      if (progress) {
+        setLocalXp(progress.totalXp);
+        setLocalCurrentXp(progress.currentXp);
+        setLocalShagai(progress.pointsBalance);
+        setLocalLevel(progress.level);
+        setLocalXpThreshold(progress.xpThreshold);
+      }
+      setPageReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user?.id, user?.user_metadata?.room_id]);
+
+  useEffect(() => {
+    if (!user?.id || !pageReady || isCheckingIn) return;
+    getUserProgressAction(user.id).then((data) => {
+      if (!data) return;
+      setLocalXp(data.totalXp);
+      setLocalCurrentXp(data.currentXp);
+      setLocalShagai(data.pointsBalance);
+      setLocalLevel(data.level);
+      setLocalXpThreshold(data.xpThreshold);
+    });
+  }, [user?.id, isCheckingIn, pageReady]);
 
   const triggerRewardAnimation = (xpReward: number, shagaiReward: number) => {
     // 1. Instantly trigger smooth optimistic UI increments
@@ -217,6 +239,15 @@ export default function Dashboard() {
     }
     setCompletingStepId(null);
   };
+
+  if (!pageReady && user) {
+    return (
+      <NomadBootScreen
+        message="Loading your expedition"
+        submessage="Syncing XP, Shagai, and your live agenda…"
+      />
+    );
+  }
 
   if (!user) {
     return (
@@ -379,16 +410,7 @@ export default function Dashboard() {
             
             {/* Left Column: Current Journey */}
             <div className="lg:col-span-2 bg-card border border-border rounded-3xl p-6">
-              {isLoadingExpedition ? (
-                <div className="animate-pulse flex flex-col gap-4">
-                  <div className="h-6 w-1/3 bg-muted rounded"></div>
-                  <div className="h-4 w-1/4 bg-muted rounded"></div>
-                  <div className="mt-6 space-y-4">
-                    <div className="h-12 bg-muted rounded-xl"></div>
-                    <div className="h-12 bg-muted rounded-xl"></div>
-                  </div>
-                </div>
-              ) : activeExpedition ? (
+              {activeExpedition ? (
                 <div>
                   <div className="flex items-start justify-between mb-8">
                     <div>

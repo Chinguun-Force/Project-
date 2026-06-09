@@ -24,8 +24,10 @@ interface AuthContextType {
   login: (
     email: string,
     password: string
-  ) => Promise<{ success: boolean; error?: string; role?: string }>;
-  signup: (userData: UserData & { password: string }) => Promise<{ success: boolean; error?: string }>;
+  ) => Promise<{ success: boolean; error?: string; role?: string; userId?: string }>;
+  signup: (
+    userData: UserData & { password: string },
+  ) => Promise<{ success: boolean; error?: string; userId?: string }>;
   logout: () => Promise<void>;
   isLoading: boolean;
 }
@@ -151,8 +153,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: true, role: "user" as const };
     }
 
+    await syncUserProfile(authUser);
     const role = await getProfileRole(authUser.id);
-    return { success: true, role };
+    return { success: true, role, userId: authUser.id };
   };
 
   const signup = async (userData: UserData & { password: string }) => {
@@ -185,7 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    return { success: true };
+    return { success: true, userId: data.user?.id };
   };
 
   const logout = async () => {

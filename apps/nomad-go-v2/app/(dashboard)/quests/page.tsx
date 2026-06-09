@@ -8,6 +8,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserStats } from "@/hooks/useUserStats";
 import { useGeolocation, MissionLocation } from "@/hooks/useGeolocation";
 import QuestCard from "@/components/QuestCard";
+import {
+  buildQuestExecutionConfig,
+  isExecutableQuestType,
+} from "@/lib/quest/questTypeMap";
+import type { QuestExecutionConfig } from "@/types/questExecution";
 import RankCalibration from "@/components/RankCalibration";
 import FloatingGains from "@/components/FloatingGains";
 import {
@@ -48,6 +53,7 @@ interface Quest {
   isCasual: boolean;
   missionId: string | null;
   baseXp: number;
+  executionConfig: QuestExecutionConfig | null;
 }
 
 export default function Quests() {
@@ -85,15 +91,20 @@ export default function Quests() {
       if (!userStats?.id) return;
       setIsLoading(true);
 
-      const [rawQuests, rawMissions, userQuestsRes] = await Promise.all([
+      const [rawQuests, rawMissions, userQuestsRes, questDataRes] = await Promise.all([
         getQuestsAction(),
         getMissionsAction(),
         supabase.from("user_quests").select("quest_id").eq("user_id", userStats.id),
+        supabase.from("quest_data").select("*"),
       ]);
 
       const completedIds = new Set(userQuestsRes.data?.map((uq) => uq.quest_id) || []);
+      const questDataByQuestId = new Map(
+        (questDataRes.data ?? []).map((row) => [row.quest_id as string, row])
+      );
 
       const sessionMissions = rawMissions.filter((m) => !m.session_id);
+      const missionById = new Map(sessionMissions.map((m) => [m.id, m]));
       const availableQuests = rawQuests.filter(
         (q) => q.status === "available" && (!q.session_id || q.is_casual !== false),
       );
@@ -108,19 +119,38 @@ export default function Quests() {
       );
 
       setQuests(
-        availableQuests.map((q) => ({
-          id: q.id,
-          title: q.title,
-          description: q.description || "",
-          baseXp: DEFAULT_QUEST_XP_REWARD,
-          basePoints: q.point_reward || 50,
-          logicType: q.type || "manual",
-          category: q.category || "global",
-          imageUrl: q.image_url || "/quest-steppe.jpg",
-          isCompleted: completedIds.has(q.id),
-          isCasual: q.is_casual !== false,
-          missionId: q.mission_id,
-        }))
+        availableQuests.map((q) => {
+          const questType = q.type || "manual";
+          const mission = q.mission_id ? missionById.get(q.mission_id) : null;
+          const executionConfig = isExecutableQuestType(questType)
+            ? buildQuestExecutionConfig(
+                questType,
+                questDataByQuestId.get(q.id),
+                mission
+                  ? {
+                      latitude: mission.latitude,
+                      longitude: mission.longitude,
+                      radiusMeters: mission.radius_meters || 50,
+                    }
+                  : null
+              )
+            : null;
+
+          return {
+            id: q.id,
+            title: q.title,
+            description: q.description || "",
+            baseXp: DEFAULT_QUEST_XP_REWARD,
+            basePoints: q.point_reward || 50,
+            logicType: questType,
+            category: q.category || "global",
+            imageUrl: q.image_url || "/quest-steppe.jpg",
+            isCompleted: completedIds.has(q.id),
+            isCasual: q.is_casual !== false,
+            missionId: q.mission_id,
+            executionConfig,
+          };
+        })
       );
 
       setIsLoading(false);
@@ -138,7 +168,8 @@ export default function Quests() {
   const handleQuestComplete = async (
     questId: string,
     baseXp: number,
-    basePoints: number
+    basePoints: number,
+    options?: { skipOfflineSubmit?: boolean }
   ) => {
     const userId = userStats?.id ?? user?.id;
     if (!userId) return;
@@ -160,6 +191,19 @@ export default function Quests() {
     startTransition(async () => {
       const roomId =
         (user?.user_metadata?.room_id as string | undefined) ?? null;
+
+      if (options?.skipOfflineSubmit) {
+        const { SyncManager } = await import("@/lib/offline/syncManager");
+        const result = await SyncManager.flushPending();
+        if (result.successIds.length > 0) {
+          await refreshStats();
+          router.refresh();
+        } else if (!navigator.onLine) {
+          toast.info("Saved offline — rewards sync when you're back online.");
+        }
+        return;
+      }
+
       const { synced, error } = await submitQuestOffline(userId, questId, {
         roomId,
       });
@@ -362,8 +406,16 @@ export default function Quests() {
                   logicType={quest.logicType}
                   category={quest.category}
                   imageUrl={quest.imageUrl}
+                  executionConfig={quest.executionConfig}
+                  roomId={(user?.user_metadata?.room_id as string | undefined) ?? ""}
+                  userId={userStats?.id ?? user?.id ?? null}
                   onComplete={({ baseXp, basePoints }) =>
                     handleQuestComplete(quest.id, baseXp, basePoints)
+                  }
+                  onExecutionComplete={({ baseXp, basePoints }) =>
+                    handleQuestComplete(quest.id, baseXp, basePoints, {
+                      skipOfflineSubmit: true,
+                    })
                   }
                 />
               </div>
