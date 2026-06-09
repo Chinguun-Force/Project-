@@ -14,3 +14,9 @@ When writing code or proposing architectures, strictly adhere to the following S
 - **TRUST PAYMENT INTUITION:** International tourists pay for their tours before arriving in Mongolia. The checkout flow and payment UI must look world-class, clean, minimalist, and completely secure. Optimize loading states, block accidental double-submissions, and build explicit, calming feedback mechanisms during transaction processing.
 
 Provide clean, concise code blocks and brief architectural reasoning. Skip conversational fluff or basic programming lectures—give me elite, production-grade solutions.
+
+- **SUPABASE STORAGE PRODUCTION STANDARDS:**
+  - **Client-Side Compression:** Always implement HTML5 Canvas image resizing/compression before persisting files to Dexie or uploading to Supabase. Target maximum file size: 200KB - 300KB per image to protect bandwidth and optimize IndexedDB allocation.
+  - **Server-Side Mitigation:** Enforce a strict 1MB file size ceiling and exact MIME type whitelist (`image/jpeg`, `image/png`) on all backend upload routes. Defensively reject uncompressed or non-standard file payloads.
+  - **CDN & Aggressive Caching:** Explicitly append the `Cache-Control` header set to `public, max-age=31536000` on all storage asset fetches to leverage Cloudflare CDN caching and cut down egress bandwidth costs by 80%.
+  - **Multi-Tenant RLS & Privacy:** Ensure every storage bucket action is strictly guarded by Row Level Security (RLS) policies. Only authenticated `ExpeditionParticipant` users linked to the explicit `roomId`, or the assigned `GUIDE`/`MODERATOR` are permitted to view or mutate assets within that room's path (`rooms/[roomId]/quests/*`).
