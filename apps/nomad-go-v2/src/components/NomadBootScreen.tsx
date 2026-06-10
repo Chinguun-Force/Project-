@@ -28,9 +28,9 @@ export function NomadBootScreen({
           <div className="absolute inset-0 rounded-full border-2 border-emerald-500/20 scale-125 animate-ping" />
           <div className="relative flex h-24 w-24 items-center justify-center rounded-full border border-emerald-500/40 bg-[#252830]/80 shadow-[0_0_40px_rgba(16,185,129,0.15)]">
             <div className="h-14 w-14 rounded-full border-2 border-transparent border-t-emerald-400 border-r-emerald-400/30 animate-spin" />
-            {/* <div className="absolute inset-0 flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center justify-center translate-y-[4px]">
               <ShagaiIcon size="md" className="opacity-90" />
-            </div> */}
+            </div>
           </div>
         </div>
 
