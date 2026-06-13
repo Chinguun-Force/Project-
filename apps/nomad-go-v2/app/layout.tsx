@@ -10,20 +10,20 @@ import { Toaster } from "@/components/ui/sonner";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Nomad-Go V2",
+  title: "Nomad-Go",
   description: "Adventure tracking and gamification",
   manifest: "/manifest.webmanifest",
   icons: {
-    apple: "/icons/icon-192x192.svg",
+    apple: "/icons/icon-192x192.png",
     icon: [
-      { url: "/icons/icon-192x192.svg", sizes: "192x192", type: "image/svg+xml" },
-      { url: "/icons/icon-512x512.svg", sizes: "512x512", type: "image/svg+xml" },
+      { url: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512x512.png", sizes: "512x512", type: "image/png" },
     ],
   },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Nomad-Go V2",
+    title: "Nomad-Go",
   },
 };
 
