@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -29,6 +29,17 @@ export default function Login() {
   const [bootPhase, setBootPhase] = useState<BootPhase>("idle");
   const { login } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("auth_error") === "email_confirmation") {
+      toast.error(
+        "That confirmation link is invalid or has expired. Please sign in or request a new link."
+      );
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { characters, countries } from "@/data/characters";
-import { User, Check, Mail, Lock, Calendar, MapPin, ChevronRight, ChevronLeft } from "lucide-react";
+import { User, Check, Mail, Lock, Calendar, MapPin, ChevronRight, ChevronLeft, MailCheck, RefreshCw } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { NomadBootScreen } from "@/components/NomadBootScreen";
 import {
@@ -36,7 +36,9 @@ export default function Signup() {
     age: "",
   });
   const [bootPhase, setBootPhase] = useState<BootPhase>("idle");
-  const { signup } = useAuth();
+  const [emailSent, setEmailSent] = useState(false);
+  const [resending, setResending] = useState(false);
+  const { signup, resendConfirmation } = useAuth();
   const router = useRouter();
 
   const handleNext = () => {
@@ -67,7 +69,7 @@ export default function Signup() {
     setBootPhase("creating");
     const started = Date.now();
 
-    const { error, success, userId } = await signup({
+    const { error, success, userId, needsConfirmation } = await signup({
       ...formData,
       age: parseInt(formData.age, 10),
     });
@@ -80,6 +82,13 @@ export default function Signup() {
 
     if (!success) {
       setBootPhase("idle");
+      return;
+    }
+
+    // Email confirmation enabled → no session yet. Ask the traveler to verify.
+    if (needsConfirmation) {
+      setBootPhase("idle");
+      setEmailSent(true);
       return;
     }
 
@@ -99,6 +108,18 @@ export default function Signup() {
     router.refresh();
   };
 
+  const handleResend = async () => {
+    if (resending || !formData.email) return;
+    setResending(true);
+    const { error } = await resendConfirmation(formData.email);
+    setResending(false);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    toast.success("Confirmation email sent again. Please check your inbox.");
+  };
+
   const selectedCharacter = characters.find((c) => c.id === formData.character);
 
   const bootMessage =
@@ -107,6 +128,72 @@ export default function Signup() {
       : bootPhase === "preparing"
         ? "Loading your expedition"
         : undefined;
+
+  if (emailSent) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#1A1D26] p-4 font-sans">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35 }}
+          className="w-full max-w-md text-center"
+        >
+          <div className="mx-auto mb-6 w-16 h-16 rounded-2xl bg-[#A8C69F]/15 border border-[#A8C69F]/30 flex items-center justify-center">
+            <MailCheck className="w-8 h-8 text-[#A8C69F]" />
+          </div>
+
+          <h1 className="text-2xl font-bold text-white mb-2 tracking-tight">
+            Confirm your email
+          </h1>
+          <p className="text-[#A0A0B0] text-sm leading-relaxed">
+            We sent a confirmation link to
+          </p>
+          <p className="text-white font-semibold mt-1 break-all">
+            {formData.email}
+          </p>
+          <p className="text-[#A0A0B0] text-sm mt-4 leading-relaxed">
+            Open the email and tap the link to activate your account. You&apos;ll
+            land straight on your dashboard.
+          </p>
+
+          <div className="mt-8 space-y-3">
+            <Button
+              onClick={handleResend}
+              disabled={resending}
+              variant="outline"
+              className="w-full border-[#A8C69F]/40 text-[#A8C69F] hover:bg-[#A8C69F]/10 hover:text-[#A8C69F]"
+            >
+              {resending ? (
+                <Spinner className="w-4 h-4" />
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Resend email
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={() => router.push("/login")}
+              className="w-full bg-[#A8C69F] hover:bg-[#8eb084] text-[#1A1D26] font-bold"
+            >
+              Go to login
+            </Button>
+          </div>
+
+          <p className="text-xs text-[#6b7280] mt-6">
+            Wrong address?{" "}
+            <button
+              type="button"
+              onClick={() => setEmailSent(false)}
+              className="text-[#A8C69F] hover:underline"
+            >
+              Go back
+            </button>
+          </p>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <>

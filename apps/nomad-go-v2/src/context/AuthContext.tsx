@@ -27,7 +27,15 @@ interface AuthContextType {
   ) => Promise<{ success: boolean; error?: string; role?: string; userId?: string }>;
   signup: (
     userData: UserData & { password: string },
-  ) => Promise<{ success: boolean; error?: string; userId?: string }>;
+  ) => Promise<{
+    success: boolean;
+    error?: string;
+    userId?: string;
+    needsConfirmation?: boolean;
+  }>;
+  resendConfirmation: (
+    email: string
+  ) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   isLoading: boolean;
 }
@@ -35,6 +43,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 function mapSignupErrorMessage(errorMessage: string): string {
+  const lower = errorMessage.toLowerCase();
+
   if (errorMessage.includes("over_email_send_rate_limit")) {
     return "Too many signup attempts. Please wait a few minutes before trying again.";
   }
@@ -43,11 +53,21 @@ function mapSignupErrorMessage(errorMessage: string): string {
     return "Email sending is temporarily rate-limited. Please retry in a few minutes.";
   }
 
+  if (lower.includes("email not confirmed")) {
+    return "Please confirm your email first — check your inbox for the confirmation link.";
+  }
+
   return errorMessage;
 }
 
 function normalizeEmail(email: string): string {
   return email.trim().replace(/^"+|"+$/g, "").toLowerCase();
+}
+
+/** Where Supabase should send users after they click the confirmation link. */
+function getEmailRedirectTo(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  return `${window.location.origin}/auth/confirm?next=/`;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -164,6 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: normalizedEmail,
       password: userData.password,
       options: {
+        emailRedirectTo: getEmailRedirectTo(),
         data: {
           playerName: userData.playerName,
           character: userData.character,
@@ -176,8 +197,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (error) return { success: false, error: mapSignupErrorMessage(error.message) };
 
-    // If email confirmation is enabled, signUp may return no active session.
-    // In that case profile creation will run after first successful login.
+    // With email confirmation enabled, signUp returns a user but no session
+    // until the link is clicked. Profile creation then runs on first login
+    // (or via the /auth/confirm callback → onAuthStateChange → syncUserProfile).
     if (data.session && data.user) {
       const userInsertError = await syncUserProfile(data.user);
       if (userInsertError) {
@@ -186,9 +208,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           error: `Signup succeeded but user profile insert failed: ${userInsertError.message}`,
         };
       }
+      return { success: true, userId: data.user.id, needsConfirmation: false };
     }
 
-    return { success: true, userId: data.user?.id };
+    return {
+      success: true,
+      userId: data.user?.id,
+      needsConfirmation: true,
+    };
+  };
+
+  const resendConfirmation = async (email: string) => {
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: normalizeEmail(email),
+      options: { emailRedirectTo: getEmailRedirectTo() },
+    });
+
+    if (error) {
+      return { success: false, error: mapSignupErrorMessage(error.message) };
+    }
+    return { success: true };
   };
 
   const logout = async () => {
@@ -205,6 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user, 
       login, 
       signup, 
+      resendConfirmation,
       logout, 
       isLoading 
     }}>

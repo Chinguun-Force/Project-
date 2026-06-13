@@ -14,7 +14,7 @@ import {
 } from "@/lib/auth/roles";
 import { PROFILES_TABLE } from "@/lib/auth/profile";
 
-const PUBLIC_PREFIXES = ["/login", "/signup"];
+const PUBLIC_PREFIXES = ["/login", "/signup", "/auth"];
 
 function isPublicPath(pathname: string) {
   return PUBLIC_PREFIXES.some(
