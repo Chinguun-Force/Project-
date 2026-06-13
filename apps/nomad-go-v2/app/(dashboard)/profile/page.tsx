@@ -1,10 +1,11 @@
 "use client";
 import { trpc } from "@/providers/trpc";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
 import XPProgressBar from "@/components/XPProgressBar";
 import EnergyCore from "@/components/EnergyCore";
 import {
-  User,
   Trophy,
   Flame,
   TrendingUp,
@@ -12,9 +13,11 @@ import {
   Calendar,
   Star,
   Target,
+  Settings as SettingsIcon,
 } from "lucide-react";
 
 export default function Profile() {
+  const router = useRouter();
   const { user } = useAuth();
   const { data: progress } = trpc.progress.me.useQuery(undefined, {
     enabled: !!user,
@@ -40,6 +43,19 @@ export default function Profile() {
   return (
     <div className="min-h-screen bg-[#1A1D26]">
       <div className="max-w-4xl mx-auto px-4 py-6">
+        {/* Top bar */}
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-2xl font-bold text-white">Profile</h1>
+          <Button
+            variant="outline"
+            onClick={() => router.push("/settings")}
+            className="border-[#322F36] text-[#A0A0B0] hover:text-[#F4C64D] hover:border-[#F4C64D]/40 hover:bg-[#322F36]/50"
+          >
+            <SettingsIcon className="w-4 h-4 mr-2" />
+            Settings
+          </Button>
+        </div>
+
         {/* Profile Header */}
         <div className="bg-[#322F36]/80 rounded-xl border border-[#322F36] p-6 mb-6">
           <div className="flex flex-col sm:flex-row items-center gap-6">
@@ -54,9 +70,9 @@ export default function Profile() {
               </div>
             </div>
             <div className="text-center sm:text-left flex-1">
-              <h1 className="text-2xl font-bold text-white mb-1">
+              <h2 className="text-2xl font-bold text-white mb-1">
                 {displayName}
-              </h1>
+              </h2>
               <div className="flex items-center gap-2 justify-center sm:justify-start mb-2">
                 <Award className="w-4 h-4 text-[#F4C64D]" />
                 <span

@@ -218,12 +218,17 @@ export async function executeQrScanQuest(
   });
 }
 
-/** QUIZ — SHA-256 answer hash check → local_valid. */
+/** QUIZ — SHA-256 answer hash check → local_valid. Handles free-text and choice. */
 export async function executeQuizQuest(
-  input: BaseExecuteInput & { selectedOptionId: string; config: QuizQuestConfig }
+  input: BaseExecuteInput & { answer: string; config: QuizQuestConfig }
 ): Promise<QuestEngineResult> {
   try {
-    const valid = await verifyHashedAnswer(input.selectedOptionId, input.config.answerHash);
+    const candidate = input.answer.trim();
+    if (!candidate) {
+      return failure("Please enter an answer.", "INVALID_QUIZ");
+    }
+
+    const valid = await verifyHashedAnswer(candidate, input.config.answerHash);
     if (!valid) {
       return failure("Incorrect answer — try again.", "INVALID_QUIZ");
     }
@@ -233,7 +238,8 @@ export async function executeQuizQuest(
       type: "QUIZ",
       status: "local_valid",
       payload: {
-        selectedOptionId: input.selectedOptionId,
+        answer: candidate,
+        mode: input.config.mode,
         question: input.config.question,
       },
       message: "Knowledge check passed.",

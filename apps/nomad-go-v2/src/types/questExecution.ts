@@ -40,10 +40,15 @@ export type QuizOption = {
   label: string;
 };
 
+export type QuizAnswerMode = "text" | "choice";
+
 export type QuizQuestConfig = {
   question: string;
-  options: QuizOption[];
-  /** SHA-256 hex of canonical answer key (e.g. selected option id). */
+  /** "text" = free-text answer; "choice" = multiple-choice options. */
+  mode: QuizAnswerMode;
+  /** Present only for choice mode. */
+  options?: QuizOption[];
+  /** SHA-256 hex of canonical answer (option id for choice, lowercased text for text). */
   answerHash: string;
 };
 

@@ -1,11 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { trpc } from "@/providers/trpc";
 import { IosInstallGuide } from "@/components/IosInstallGuide";
 import { canShowIosInstallGuide } from "@/lib/pwa/iosInstall";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Settings as SettingsIcon,
   Volume2,
@@ -18,10 +21,15 @@ import {
   Info,
   Smartphone,
   ChevronRight,
+  User,
+  UserCog,
 } from "lucide-react";
 
 export default function Settings() {
+  const router = useRouter();
   const { user, logout } = useAuth();
+  const { showModeratorPanelNav, showAdminPanelNav, isStaffRole } =
+    useUserRole();
   const dailyLoginMutation = trpc.progress.dailyLogin.useMutation({
     onSuccess: (data) => {
       alert(
@@ -49,6 +57,14 @@ export default function Settings() {
     );
   }
 
+  const profileName =
+    (user.user_metadata?.playerName ||
+      user.user_metadata?.full_name ||
+      user.email?.split("@")[0]) ??
+    "Nomad";
+  const showPanelLinks =
+    !isStaffRole && (showModeratorPanelNav || showAdminPanelNav);
+
   return (
     <div className="min-h-screen bg-[#1A1D26]">
       <div className="max-w-2xl mx-auto px-4 py-6">
@@ -63,8 +79,32 @@ export default function Settings() {
           </p>
         </div>
 
+        {/* Profile shortcut */}
+        {/* <button
+          type="button"
+          onClick={() => router.push("/profile")}
+          className="w-full text-left bg-[#322F36]/80 rounded-xl border border-[#322F36] p-4 mb-6 flex items-center gap-4 hover:border-[#F4C64D]/40 hover:bg-[#322F36] transition-colors"
+        >
+          <Avatar className="w-12 h-12 border-2 border-[#F4C64D]/30">
+            <AvatarImage src={user.user_metadata?.avatar_url as string} />
+            <AvatarFallback className="bg-[#1A1D26] text-[#F4C64D]">
+              {profileName.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-white truncate">
+              {profileName}
+            </p>
+            <p className="text-xs text-[#A0A0B0] flex items-center gap-1">
+              <User className="w-3 h-3" />
+              View your profile & stats
+            </p>
+          </div>
+          <ChevronRight className="w-5 h-5 text-[#A0A0B0]" />
+        </button> */}
+
         {/* Daily Login Bonus */}
-        <div className="bg-gradient-to-r from-[#F4C64D]/10 to-[#A8C69F]/10 rounded-xl border border-[#F4C64D]/20 p-4 mb-6">
+        {/* <div className="bg-gradient-to-r from-[#F4C64D]/10 to-[#A8C69F]/10 rounded-xl border border-[#F4C64D]/20 p-4 mb-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-[#F4C64D]/20 flex items-center justify-center">
@@ -87,7 +127,7 @@ export default function Settings() {
               {dailyLoginMutation.isPending ? "Claiming..." : "Claim"}
             </Button>
           </div>
-        </div>
+        </div> */}
 
         {showIosInstallSection ? (
           <div className="bg-gradient-to-r from-emerald-500/10 to-[#A8C69F]/10 rounded-xl border border-emerald-500/25 p-4 mb-6">
@@ -195,7 +235,7 @@ export default function Settings() {
         </div>
 
         {/* Account */}
-        <div className="bg-[#322F36]/80 rounded-xl border border-[#322F36] mb-6">
+        {/* <div className="bg-[#322F36]/80 rounded-xl border border-[#322F36] mb-6">
           <div className="p-4 border-b border-[#1A1D26]">
             <h2 className="text-sm font-semibold text-white uppercase tracking-wider">
               Account
@@ -227,7 +267,46 @@ export default function Settings() {
               </div>
             </div>
           </div>
-        </div>
+        </div> */}
+
+        {/* Panels (staff access for non-staff accounts) */}
+        {showPanelLinks ? (
+          <div className="bg-[#322F36]/80 rounded-xl border border-[#322F36] mb-6">
+            <div className="p-4 border-b border-[#1A1D26]">
+              <h2 className="text-sm font-semibold text-white uppercase tracking-wider">
+                Panels
+              </h2>
+            </div>
+            <div className="divide-y divide-[#1A1D26]">
+              {showModeratorPanelNav ? (
+                <button
+                  type="button"
+                  onClick={() => router.push("/moderator")}
+                  className="w-full flex items-center justify-between p-4 hover:bg-[#1A1D26]/50 transition-colors"
+                >
+                  <span className="flex items-center gap-3 text-sm text-white">
+                    <UserCog className="w-4 h-4 text-[#A8C69F]" />
+                    Moderator Panel
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-[#A0A0B0]" />
+                </button>
+              ) : null}
+              {showAdminPanelNav ? (
+                <button
+                  type="button"
+                  onClick={() => router.push("/admin")}
+                  className="w-full flex items-center justify-between p-4 hover:bg-[#1A1D26]/50 transition-colors"
+                >
+                  <span className="flex items-center gap-3 text-sm text-white">
+                    <Shield className="w-4 h-4 text-[#F4C64D]" />
+                    Admin Panel
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-[#A0A0B0]" />
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         {/* Danger Zone */}
         <div className="bg-red-500/5 rounded-xl border border-red-500/20">

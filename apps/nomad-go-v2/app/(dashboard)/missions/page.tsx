@@ -1,12 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { getMissionsAction, getToursForMissionAction } from "@/app/actions/gameActions";
+import {
+  getMissionsAction,
+  getToursForMissionAction,
+  getCompletedMissionIdsAction,
+  completeMissionAction,
+} from "@/app/actions/gameActions";
 import { useGeolocation } from "@/hooks/useGeolocation";
+import { useMissionDwell, MISSION_DWELL_MS } from "@/hooks/useMissionDwell";
+import { useUserStats } from "@/hooks/useUserStats";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronDown, ChevronUp, MapPin, Route } from "lucide-react";
+import { ChevronDown, ChevronUp, Route, Timer } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
+import { toast } from "sonner";
+import FloatingGains from "@/components/FloatingGains";
 
 type TourSuggestion = {
   tripTemplates: {
@@ -19,14 +28,22 @@ type TourSuggestion = {
 };
 
 export default function MissionsModule() {
+  const { userStats, refreshStats } = useUserStats();
   const [missions, setMissions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [toursByMission, setToursByMission] = useState<Record<string, TourSuggestion>>({});
   const [loadingToursId, setLoadingToursId] = useState<string | null>(null);
+  const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+  const [floatingXp, setFloatingXp] = useState<number | null>(null);
 
   const { distances } = useGeolocation(missions);
+
+  const visibleMissions = useMemo(
+    () => missions.filter((m) => !completedIds.has(m.id)),
+    [missions, completedIds]
+  );
 
   useEffect(() => {
     async function loadMissions() {
@@ -43,6 +60,56 @@ export default function MissionsModule() {
     }
     loadMissions();
   }, []);
+
+  useEffect(() => {
+    if (!userStats?.id) return;
+    getCompletedMissionIdsAction(userStats.id)
+      .then((ids) => setCompletedIds(new Set(ids)))
+      .catch(() => setCompletedIds(new Set()));
+  }, [userStats?.id]);
+
+  const handleMissionComplete = useCallback(
+    async (missionId: string) => {
+      const userId = userStats?.id;
+      if (!userId) return;
+
+      const mission = missions.find((m) => m.id === missionId);
+      const xpReward = Number(mission?.xp_reward ?? 0);
+
+      // Optimistic: hide immediately + dopamine feedback.
+      setCompletedIds((prev) => new Set(prev).add(missionId));
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
+        navigator.vibrate([100, 50, 100]);
+      }
+      if (xpReward > 0) {
+        setFloatingXp(xpReward);
+        setTimeout(() => setFloatingXp(null), 2500);
+      }
+      toast.success(
+        `Mission complete! ${xpReward > 0 ? `+${xpReward} XP` : ""}`.trim()
+      );
+
+      try {
+        const result = await completeMissionAction(userId, missionId);
+        if (result.success || result.alreadyCompleted) {
+          await refreshStats();
+        } else {
+          toast.error(result.error ?? "Could not sync mission completion.");
+        }
+      } catch {
+        toast.info("Mission saved — XP will sync when you're back online.");
+      }
+    },
+    [userStats?.id, missions, refreshStats]
+  );
+
+  const { progress } = useMissionDwell({
+    missions,
+    distances,
+    completedIds,
+    storageNamespace: userStats?.id,
+    onComplete: handleMissionComplete,
+  });
 
   const toggleTours = async (missionId: string) => {
     if (expandedId === missionId) {
@@ -83,28 +150,44 @@ export default function MissionsModule() {
     return <div className="p-8 text-red-500">API Error: {apiError}</div>;
   }
 
+  const dwellMinutes = Math.round(MISSION_DWELL_MS / 60000);
+
   return (
     <div className="p-6 bg-[#1A1D26] min-h-screen text-white">
+      {floatingXp !== null && (
+        <FloatingGains
+          xpGained={floatingXp}
+          pointsGained={0}
+        />
+      )}
       <h1 className="text-2xl font-bold text-emerald-400 mb-2 shadow-sm">
         Sightseeing Bucket List
       </h1>
       <p className="text-sm text-[#A0A0B0] mb-6">
-        Visit sights within radius to earn XP. Expand a sight to see tours that include it.
+        Stay within a sight&apos;s radius for {dwellMinutes} minutes to auto-complete it and earn XP.
+        Completed sights disappear from this list.
       </p>
 
-      {missions.length === 0 ? (
+      {visibleMissions.length === 0 ? (
         <div className="border border-dashed border-zinc-700 p-8 text-center rounded-xl text-zinc-500">
-          No missions found in database.
+          {missions.length === 0
+            ? "No missions found in database."
+            : "All sights completed — great exploring! 🎉"}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {missions.map((mission) => {
+          {visibleMissions.map((mission) => {
             const distance = distances[mission.id];
             const isInside =
               distance !== undefined && distance <= (mission.radius_meters || 50);
             const isExpanded = expandedId === mission.id;
             const tours = toursByMission[mission.id];
             const totalTours = tours?.tripTemplates.length ?? 0;
+            const dwellPct = Math.round((progress[mission.id] ?? 0) * 100);
+            const dwellSecondsLeft = Math.max(
+              0,
+              Math.ceil(((1 - (progress[mission.id] ?? 0)) * MISSION_DWELL_MS) / 1000)
+            );
 
             return (
               <div
@@ -138,6 +221,27 @@ export default function MissionsModule() {
                         : "Calculating distance..."}
                     </span>
                   </div>
+
+                  {isInside && (
+                    <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2.5">
+                      <div className="flex items-center justify-between text-[11px] mb-1.5">
+                        <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                          <Timer className="w-3.5 h-3.5" />
+                          Checking in… stay nearby
+                        </span>
+                        <span className="font-mono text-emerald-300">
+                          {Math.floor(dwellSecondsLeft / 60)}:
+                          {String(dwellSecondsLeft % 60).padStart(2, "0")} left
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-400 transition-all duration-500 ease-out"
+                          style={{ width: `${dwellPct}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   <button
                     type="button"

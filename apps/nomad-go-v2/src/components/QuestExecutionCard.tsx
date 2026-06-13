@@ -73,6 +73,7 @@ export default function QuestExecutionCard({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successStatus, setSuccessStatus] = useState<OfflineSubmissionStatus | null>(null);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [quizText, setQuizText] = useState("");
   const [qrInput, setQrInput] = useState("");
   const [recording, setRecording] = useState(false);
   const audioSessionRef = useRef<Awaited<ReturnType<typeof startAudioCapture>> | null>(null);
@@ -133,13 +134,15 @@ export default function QuestExecutionCard({
   };
 
   const handleQuizSubmit = () => {
-    if (config.type !== "QUIZ" || !selectedOption) return;
+    if (config.type !== "QUIZ") return;
+    const answer = config.quiz.mode === "choice" ? selectedOption ?? "" : quizText;
+    if (!answer.trim()) return;
     void runEngine(() =>
       executeQuizQuest({
         questId,
         roomId,
         userId,
-        selectedOptionId: selectedOption,
+        answer,
         config: config.quiz,
       })
     );
@@ -357,36 +360,49 @@ export default function QuestExecutionCard({
           </div>
         );
 
-      case "QUIZ":
+      case "QUIZ": {
+        const isChoice = config.quiz.mode === "choice";
+        const canSubmit = isChoice ? Boolean(selectedOption) : quizText.trim().length > 0;
         return (
           <div className="space-y-3">
             <p className="text-sm text-[#A0A0B0]">{config.quiz.question}</p>
-            <div className="space-y-2">
-              {config.quiz.options.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => setSelectedOption(opt.id)}
-                  className={`w-full text-left rounded-lg px-3 py-2.5 text-sm border transition-colors ${
-                    selectedOption === opt.id
-                      ? "border-emerald-500 bg-emerald-500/10 text-emerald-300"
-                      : "border-[#3d4450] bg-[#1A1D26] text-white hover:border-emerald-500/40"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            {isChoice ? (
+              <div className="space-y-2">
+                {(config.quiz.options ?? []).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setSelectedOption(opt.id)}
+                    className={`w-full text-left rounded-lg px-3 py-2.5 text-sm border transition-colors ${
+                      selectedOption === opt.id
+                        ? "border-emerald-500 bg-emerald-500/10 text-emerald-300"
+                        : "border-[#3d4450] bg-[#1A1D26] text-white hover:border-emerald-500/40"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <textarea
+                value={quizText}
+                onChange={(e) => setQuizText(e.target.value)}
+                placeholder="Type your answer…"
+                rows={3}
+                className="w-full rounded-lg bg-[#1A1D26] border border-[#3d4450] px-3 py-2 text-sm text-white placeholder:text-[#6b7280] focus:outline-none focus:border-emerald-500/50 resize-none"
+              />
+            )}
             <Button
               type="button"
               onClick={handleQuizSubmit}
-              disabled={!selectedOption || phase === "running"}
+              disabled={!canSubmit || phase === "running"}
               className="w-full bg-emerald-500 hover:bg-emerald-400 text-[#0f1419] font-semibold"
             >
               Submit Answer
             </Button>
           </div>
         );
+      }
 
       case "TIME_BOUND":
         return (

@@ -80,11 +80,10 @@ export default function QuestTypeConfigForm({
       );
 
     case "QUIZ":
-    case "CHOICE":
       return (
         <div className={sectionClass}>
           <p className="text-xs uppercase tracking-wider text-emerald-400/80 font-medium">
-            {executionType === "CHOICE" ? "Choice" : "Quiz"} knowledge check
+            Quiz — free-text answer
           </p>
           <div>
             <label className={labelClass}>Question</label>
@@ -93,20 +92,55 @@ export default function QuestTypeConfigForm({
               onChange={(e) =>
                 patch({ quiz: { ...config.quiz, question: e.target.value } })
               }
-              className={`w-full rounded-md border border-[#322F36] bg-[#1A1D26] text-white p-2 mt-1 min-h-[72px] focus:outline-none focus:border-emerald-500/50`}
+              className="w-full rounded-md border border-[#322F36] bg-[#1A1D26] text-white p-2 mt-1 min-h-[72px] focus:outline-none focus:border-emerald-500/50"
               placeholder="What is the traditional Mongolian dwelling called?"
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Correct answer (text)</label>
+            <Input
+              value={config.quiz.correctAnswer}
+              onChange={(e) =>
+                patch({ quiz: { ...config.quiz, correctAnswer: e.target.value } })
+              }
+              placeholder="ger"
+              className={fieldClass}
+            />
+          </div>
+          <p className="text-[11px] text-[#6b7280]">
+            Answer is matched case-insensitively and hashed (SHA-256) — never stored in plain text.
+            The traveler types their answer in a text box.
+          </p>
+        </div>
+      );
+
+    case "CHOICE":
+      return (
+        <div className={sectionClass}>
+          <p className="text-xs uppercase tracking-wider text-emerald-400/80 font-medium">
+            Choice — multiple-choice test
+          </p>
+          <div>
+            <label className={labelClass}>Question</label>
+            <textarea
+              value={config.choice.question}
+              onChange={(e) =>
+                patch({ choice: { ...config.choice, question: e.target.value } })
+              }
+              className="w-full rounded-md border border-[#322F36] bg-[#1A1D26] text-white p-2 mt-1 min-h-[72px] focus:outline-none focus:border-emerald-500/50"
+              placeholder="Which mountain is sacred to Mongolians?"
             />
           </div>
           <div className="space-y-2">
             <label className={labelClass}>Answer options (select correct)</label>
-            {config.quiz.options.map((opt, index) => (
+            {config.choice.options.map((opt, index) => (
               <div key={`${opt.id}-${index}`} className="flex items-center gap-2">
                 <input
                   type="radio"
                   name="correctOption"
-                  checked={config.quiz.correctOptionId === opt.id}
+                  checked={config.choice.correctOptionId === opt.id}
                   onChange={() =>
-                    patch({ quiz: { ...config.quiz, correctOptionId: opt.id } })
+                    patch({ choice: { ...config.choice, correctOptionId: opt.id } })
                   }
                   className="accent-emerald-500"
                   title="Mark as correct"
@@ -114,9 +148,9 @@ export default function QuestTypeConfigForm({
                 <Input
                   value={opt.id}
                   onChange={(e) => {
-                    const options = [...config.quiz.options];
+                    const options = [...config.choice.options];
                     options[index] = { ...opt, id: e.target.value };
-                    patch({ quiz: { ...config.quiz, options } });
+                    patch({ choice: { ...config.choice, options } });
                   }}
                   placeholder="id"
                   className={`${fieldClass} w-20 font-mono text-xs`}
@@ -124,9 +158,9 @@ export default function QuestTypeConfigForm({
                 <Input
                   value={opt.label}
                   onChange={(e) => {
-                    const options = [...config.quiz.options];
+                    const options = [...config.choice.options];
                     options[index] = { ...opt, label: e.target.value };
-                    patch({ quiz: { ...config.quiz, options } });
+                    patch({ choice: { ...config.choice, options } });
                   }}
                   placeholder={`Option ${index + 1} label`}
                   className={`${fieldClass} flex-1`}
@@ -135,12 +169,14 @@ export default function QuestTypeConfigForm({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  disabled={config.quiz.options.length <= 2}
+                  disabled={config.choice.options.length <= 2}
                   onClick={() => {
-                    const options = config.quiz.options.filter((_, i) => i !== index);
+                    const options = config.choice.options.filter((_, i) => i !== index);
                     const correctOptionId =
-                      config.quiz.correctOptionId === opt.id ? "" : config.quiz.correctOptionId;
-                    patch({ quiz: { ...config.quiz, options, correctOptionId } });
+                      config.choice.correctOptionId === opt.id
+                        ? ""
+                        : config.choice.correctOptionId;
+                    patch({ choice: { ...config.choice, options, correctOptionId } });
                   }}
                   className="text-[#A0A0B0] hover:text-red-400 h-9 w-9 p-0"
                 >
@@ -153,12 +189,12 @@ export default function QuestTypeConfigForm({
               variant="outline"
               size="sm"
               onClick={() => {
-                const nextIndex = config.quiz.options.length;
+                const nextIndex = config.choice.options.length;
                 const nextId = String.fromCharCode(97 + nextIndex);
                 patch({
-                  quiz: {
-                    ...config.quiz,
-                    options: [...config.quiz.options, { id: nextId, label: "" }],
+                  choice: {
+                    ...config.choice,
+                    options: [...config.choice.options, { id: nextId, label: "" }],
                   },
                 });
               }}

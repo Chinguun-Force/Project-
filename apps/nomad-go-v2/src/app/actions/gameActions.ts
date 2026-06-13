@@ -22,6 +22,77 @@ export async function getMissionsAction() {
   return data || []
 }
 
+/** Mission IDs the user has already completed (hidden from the mission tab). */
+export async function getCompletedMissionIdsAction(userId: string): Promise<string[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('user_missions')
+    .select('mission_id')
+    .eq('user_id', userId)
+
+  if (error) {
+    console.error('⛔ getCompletedMissionIdsAction:', error.message)
+    return []
+  }
+  return (data ?? []).map((r) => r.mission_id as string)
+}
+
+/**
+ * Complete a mission after a verified geofence dwell (10 min in radius).
+ * Idempotent: unique(user_id, mission_id) prevents double XP grants.
+ */
+export async function completeMissionAction(userId: string, missionId: string) {
+  if (!userId || !missionId) {
+    return { success: false, error: 'Missing user or mission id' }
+  }
+  const supabase = await createClient()
+
+  const { data: mission, error: missionError } = await supabase
+    .from('missions')
+    .select('id, xp_reward')
+    .eq('id', missionId)
+    .single()
+
+  if (missionError || !mission) {
+    return { success: false, error: 'Mission not found' }
+  }
+
+  const xpReward = Number(mission.xp_reward ?? 0)
+
+  // Guard against double completion before granting XP.
+  const { data: existing } = await supabase
+    .from('user_missions')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('mission_id', missionId)
+    .maybeSingle()
+
+  if (existing) {
+    return { success: false, error: 'Mission already completed', alreadyCompleted: true }
+  }
+
+  const { error: insertError } = await supabase
+    .from('user_missions')
+    .insert({
+      user_id: userId,
+      mission_id: missionId,
+      status: 'completed',
+      xp_awarded: xpReward,
+    })
+
+  if (insertError) {
+    // Unique violation = a concurrent completion already landed; treat as done.
+    if (insertError.code === '23505') {
+      return { success: false, error: 'Mission already completed', alreadyCompleted: true }
+    }
+    console.error('⛔ completeMissionAction insert:', insertError.message)
+    return { success: false, error: 'Failed to record mission completion' }
+  }
+
+  const reward = await grantUserRewardsAction(userId, xpReward, 0)
+  return { ...reward, xpReward }
+}
+
 /** Published trip templates that include a given mission/sight. */
 export async function getToursForMissionAction(missionId: string) {
   const supabase = await createClient()
@@ -524,7 +595,7 @@ export async function getUserProgressAction(userId: string) {
   const supabase = await createClient();
   const { data: user, error } = await supabase
     .from('users')
-    .select('total_xp, current_xp, available_points, level, xp_threshold')
+    .select('total_xp, current_xp, available_points, level, xp_threshold, completed_quests')
     .eq('id', userId)
     .single();
 
@@ -536,5 +607,6 @@ export async function getUserProgressAction(userId: string) {
     pointsBalance: Number(user.available_points || 0),
     level: Number(user.level || 1),
     xpThreshold: Number(user.xp_threshold || 1000),
+    completedQuests: Number(user.completed_quests || 0),
   };
 }

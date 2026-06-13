@@ -44,7 +44,7 @@ export async function getUsers() {
 
     return {
       id: p.id,
-      full_name: p.full_name ?? legacy?.full_name ?? null,
+      full_name: p.full_name ?? null,
       email: legacy?.email ?? null,
       role: p.role,
       tenant_id: p.tenant_id,
@@ -245,6 +245,7 @@ export async function getMissions() {
 export type CreateQuestPayload = {
   title: string;
   description: string;
+  imageUrl?: string | null;
   /** Supabase `quests.type` (photo, quiz, choice, action, timer). */
   dbType: string;
   pointReward: number;
@@ -278,6 +279,7 @@ export async function createQuest(payload: CreateQuestPayload) {
     .insert({
       title: payload.title.trim(),
       description: payload.description.trim(),
+      image_url: payload.imageUrl?.trim() || null,
       type: payload.dbType,
       point_reward: payload.pointReward,
       difficulty: payload.difficulty,

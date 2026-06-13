@@ -3,7 +3,14 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
-import { Flame, MapPin, ChevronRight } from "lucide-react";
+import {
+  Flame,
+  MapPin,
+  ChevronRight,
+  Trophy,
+  Target,
+  Award,
+} from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import {
   getTouristActiveRoomAction,
@@ -19,6 +26,7 @@ import {
   computeOptimisticRewards,
   getMongolianRank,
 } from "@/lib/gamification";
+import { getDailyStreak, recordDailyCheckin } from "@/lib/dailyStreak";
 import { ShagaiIcon } from "@/components/ShagaiIcon";
 import { LegacySessionMigrateBanner } from "@/components/LegacySessionMigrateBanner";
 import { NomadBootScreen } from "@/components/NomadBootScreen";
@@ -41,6 +49,8 @@ export default function Dashboard() {
   const [localLevel, setLocalLevel] = useState(1);
   const [localXpThreshold, setLocalXpThreshold] = useState(1000);
   const [localShagai, setLocalShagai] = useState(0);
+  const [completedQuests, setCompletedQuests] = useState(0);
+  const [streak, setStreak] = useState(0);
   const [isGlow, setIsGlow] = useState(false);
   const [floatingLabels, setFloatingLabels] = useState<{id: number, text: string}[]>([]);
 
@@ -82,7 +92,9 @@ export default function Dashboard() {
         setLocalShagai(progress.pointsBalance);
         setLocalLevel(progress.level);
         setLocalXpThreshold(progress.xpThreshold);
+        setCompletedQuests(progress.completedQuests);
       }
+      setStreak(getDailyStreak(user.id));
       setPageReady(true);
     })();
 
@@ -100,6 +112,7 @@ export default function Dashboard() {
       setLocalShagai(data.pointsBalance);
       setLocalLevel(data.level);
       setLocalXpThreshold(data.xpThreshold);
+      setCompletedQuests(data.completedQuests);
     });
   }, [user?.id, isCheckingIn, pageReady]);
 
@@ -157,6 +170,7 @@ export default function Dashboard() {
 
     const res = await claimDailyCheckinAction(user.id);
     if (res.success) {
+      setStreak(recordDailyCheckin(user.id));
       // Re-fetch native data in background to stay synced
       getUserProgressAction(user.id).then(data => {
         if (data) {
@@ -308,67 +322,115 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto px-4 py-8">
         <LegacySessionMigrateBanner />
 
-        {/* TOP SECTION: User Profile & Shagai Wallet */}
-        <div className="flex justify-between items-start mb-8">
-          <div className="flex flex-col flex-1 max-w-sm mr-8">
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                <img
-                  src={(user.user_metadata?.avatar_url as string) ?? "/rank-nomad.png"}
-                  alt="avatar"
-                  className="w-16 h-16 rounded-full border-2 border-border object-cover bg-card shadow-lg"
-                  onError={(e) => { e.currentTarget.src = "/rank-nomad.png"; }}
-                />
-              </div>
-              <div className="flex-1">
-                <h1 className="text-2xl font-bold text-foreground tracking-tight line-clamp-1">
+        {/* TOP SECTION: Profile summary card */}
+        <div className="relative overflow-hidden bg-card border border-border rounded-3xl p-5 sm:p-6 mb-4">
+          {/* Floating reward labels */}
+          {floatingLabels.map((label, index) => (
+            <div
+              key={label.id}
+              className="absolute right-6 text-emerald-400 font-bold text-sm z-50 animate-float-up whitespace-nowrap"
+              style={{ top: index === 0 ? "0.75rem" : "-0.25rem" }}
+            >
+              {label.text}
+            </div>
+          ))}
+
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4 min-w-0">
+              <img
+                src={(user.user_metadata?.avatar_url as string) ?? "/rank-nomad.png"}
+                alt="avatar"
+                className="w-16 h-16 rounded-full border-2 border-border object-cover bg-background shadow-lg shrink-0"
+                onError={(e) => { e.currentTarget.src = "/rank-nomad.png"; }}
+              />
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight truncate">
                   {(user.user_metadata?.playerName || user.user_metadata?.full_name || user.email?.split('@')[0]) ?? "Explorer"}
                 </h1>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-sm font-semibold text-emerald-400 tracking-wide uppercase">
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <Award className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="text-sm font-semibold text-emerald-400 tracking-wide uppercase truncate">
                     Lv.{currentLevel} • {currentRank}
                   </span>
                 </div>
               </div>
             </div>
-            
-            {/* XP Progress Bar */}
-            <div className="w-full mt-4">
-              <div className="flex justify-between text-xs text-muted-foreground mb-1.5 font-medium">
-                <span>{currentLevelRelativeXp.toLocaleString()} XP</span>
-                <span>{localXpThreshold.toLocaleString()} XP</span>
-              </div>
-              <div className={`h-2 w-full bg-[#1F222A] rounded-full overflow-hidden transition-shadow duration-500 ${isGlow ? 'shadow-[0_0_20px_rgba(16,185,129,0.5)]' : ''}`}>
-                <div 
-                  className="h-full bg-emerald-500 rounded-full shadow-[0_0_10px_rgba(52,211,153,0.5)] transition-all duration-500 ease-out" 
-                  style={{ width: `${percentage}%` }}
-                />
+
+            {/* Shagai balance */}
+            <div
+              className={`flex items-center gap-2.5 rounded-2xl px-4 py-2.5 bg-background/60 border shrink-0 transition-shadow duration-500 ${
+                isGlow
+                  ? "shadow-[0_0_20px_rgba(16,185,129,0.5)] border-emerald-500/50"
+                  : "border-border"
+              }`}
+            >
+              <ShagaiIcon size="md" balance={availablePoints} highlight={isGlow} />
+              <div className="flex flex-col items-end leading-none">
+                <span className="text-xl sm:text-2xl font-bold font-mono text-emerald-400 tracking-tighter">
+                  {availablePoints.toLocaleString()}
+                </span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-widest mt-1">
+                  Shagai
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Shagai Pill */}
-          <div className={`relative bg-card border border-border rounded-2xl px-5 py-3 flex flex-col items-end transition-shadow duration-500 ${isGlow ? 'shadow-[0_0_20px_rgba(16,185,129,0.5)] border-emerald-500/50' : 'shadow-sm'}`}>
-            
-            {/* Floating Labels */}
-            {floatingLabels.map((label, index) => (
-              <div key={label.id} className="absolute -top-6 text-emerald-400 font-bold text-sm z-50 animate-float-up whitespace-nowrap" style={{ right: index === 0 ? '1rem' : '4rem', top: index === 0 ? '-1.5rem' : '-2.5rem' }}>
-                {label.text}
-              </div>
-            ))}
-
-            <div className="flex items-center gap-2 sm:gap-3">
-              <ShagaiIcon
-                size="lg"
-                balance={availablePoints}
-                highlight={isGlow}
-              />
-              <span className="text-2xl sm:text-3xl font-bold font-mono text-emerald-400 tracking-tighter transition-all duration-500">
-                {availablePoints.toLocaleString()}
-              </span>
+          {/* XP Progress Bar */}
+          <div className="w-full mt-5">
+            <div className="flex justify-between text-xs text-muted-foreground mb-1.5 font-medium">
+              <span>{currentLevelRelativeXp.toLocaleString()} XP</span>
+              <span>{localXpThreshold.toLocaleString()} XP</span>
             </div>
-            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest mt-1">
-              My Shagai
+            <div className={`h-2.5 w-full bg-[#1F222A] rounded-full overflow-hidden transition-shadow duration-500 ${isGlow ? 'shadow-[0_0_20px_rgba(16,185,129,0.5)]' : ''}`}>
+              <div
+                className="h-full bg-emerald-500 rounded-full shadow-[0_0_10px_rgba(52,211,153,0.5)] transition-all duration-500 ease-out"
+                style={{ width: `${percentage}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* STATS GRID — quick glance like /profile */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+          <div className="bg-card border border-border rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Target className="w-4 h-4 text-[#A8C69F]" />
+              <span className="text-xs text-muted-foreground">Level</span>
+            </div>
+            <span className="text-xl font-bold text-foreground font-mono">
+              {currentLevel}
+            </span>
+          </div>
+
+          <div className={`bg-card border rounded-2xl p-4 transition-shadow duration-500 ${isGlow ? "border-emerald-500/40" : "border-border"}`}>
+            <div className="flex items-center gap-2 mb-2">
+              <Flame className="w-4 h-4 text-[#F2994A]" />
+              <span className="text-xs text-muted-foreground">Streak</span>
+            </div>
+            <span className="text-xl font-bold text-foreground font-mono">
+              {streak}
+              <span className="text-sm text-muted-foreground">d</span>
+            </span>
+          </div>
+
+          <div className="bg-card border border-border rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Trophy className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs text-muted-foreground">Quests</span>
+            </div>
+            <span className="text-xl font-bold text-foreground font-mono">
+              {completedQuests}
+            </span>
+          </div>
+
+          <div className="bg-card border border-border rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Award className="w-4 h-4 text-[#F4C64D]" />
+              <span className="text-xs text-muted-foreground">Rank</span>
+            </div>
+            <span className="block text-lg font-bold text-foreground truncate">
+              {currentRank}
             </span>
           </div>
         </div>

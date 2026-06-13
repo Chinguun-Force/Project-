@@ -32,6 +32,7 @@ import {
 import QuestTypeConfigForm, {
   createInitialQuestConfig,
 } from "@/components/admin/QuestTypeConfigForm";
+import ImageUploadField from "@/components/admin/ImageUploadField";
 import { buildQuestDataPayload } from "@/lib/quest/buildQuestDataPayload";
 import {
   DEFAULT_QUEST_CONFIG,
@@ -88,6 +89,7 @@ export default function Admin() {
   const [questForm, setQuestForm] = useState({
     title: "",
     description: "",
+    imageUrl: "",
     executionType: "QUIZ" as AdminQuestExecutionType,
     pointReward: 50,
     difficulty: "easy",
@@ -230,6 +232,7 @@ export default function Admin() {
       await createQuest({
         title: questForm.title,
         description: questForm.description,
+        imageUrl: questForm.imageUrl || null,
         dbType: built.dbType,
         pointReward: questForm.pointReward,
         difficulty: questForm.difficulty,
@@ -242,6 +245,7 @@ export default function Admin() {
       setQuestForm({
         title: "",
         description: "",
+        imageUrl: "",
         executionType: "QUIZ",
         pointReward: 50,
         difficulty: "easy",
@@ -522,13 +526,12 @@ export default function Admin() {
                     <label className="text-sm text-[#A0A0B0]">Description</label>
                     <textarea value={missionForm.description} onChange={e => setMissionForm({...missionForm, description: e.target.value})} className="w-full rounded-md bg-[#1A1D26] border border-[#322F36] text-white p-2 mt-1 min-h-[100px]" />
                   </div>
-                  <div>
-                    <label className="text-sm text-[#A0A0B0]">Image URL</label>
-                    <Input value={missionForm.imageUrl} onChange={e => setMissionForm({...missionForm, imageUrl: e.target.value})} placeholder="https://..." className="bg-[#1A1D26] border-[#322F36] text-white mt-1" />
-                    {missionForm.imageUrl && (
-                      <img src={missionForm.imageUrl} alt="Preview" className="mt-2 h-24 w-full object-cover rounded-lg border border-[#322F36]" />
-                    )}
-                  </div>
+                  <ImageUploadField
+                    label="Mission Image"
+                    folder="missions"
+                    value={missionForm.imageUrl}
+                    onChange={(url) => setMissionForm({ ...missionForm, imageUrl: url })}
+                  />
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
                       <label className="text-sm text-[#A0A0B0]">XP Reward</label>
@@ -580,6 +583,12 @@ export default function Admin() {
                       className="w-full rounded-md bg-[#1A1D26] border border-[#322F36] text-white p-2 mt-1 min-h-[80px] focus:outline-none focus:border-emerald-500/50"
                     />
                   </div>
+                  <ImageUploadField
+                    label="Quest Image"
+                    folder="quests"
+                    value={questForm.imageUrl}
+                    onChange={(url) => setQuestForm({ ...questForm, imageUrl: url })}
+                  />
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <label className="text-sm text-[#A0A0B0]">Execution Type</label>

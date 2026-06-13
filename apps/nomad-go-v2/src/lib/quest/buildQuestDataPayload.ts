@@ -33,11 +33,24 @@ export async function buildQuestDataPayload(
         },
       };
 
-    case "QUIZ":
+    case "QUIZ": {
+      // Free-text answer: hash the lowercased+trimmed correct answer.
+      const answerHash = await sha256Hex(config.quiz.correctAnswer.trim().toLowerCase());
+      return {
+        dbType,
+        validationCode: null,
+        questData: {
+          question: config.quiz.question.trim(),
+          mode: "text",
+          answerHash,
+        },
+      };
+    }
+
     case "CHOICE": {
-      const correctId = config.quiz.correctOptionId.trim().toLowerCase();
+      const correctId = config.choice.correctOptionId.trim().toLowerCase();
       const answerHash = await sha256Hex(correctId);
-      const options = config.quiz.options.map((o) => ({
+      const options = config.choice.options.map((o) => ({
         id: o.id.trim(),
         label: o.label.trim(),
       }));
@@ -45,7 +58,8 @@ export async function buildQuestDataPayload(
         dbType,
         validationCode: null,
         questData: {
-          question: config.quiz.question.trim(),
+          question: config.choice.question.trim(),
+          mode: "choice",
           options,
           answerHash,
         },

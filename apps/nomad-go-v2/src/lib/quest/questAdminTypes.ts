@@ -18,7 +18,13 @@ export type QuestConfigDraft = {
     targetLongitude: string;
     radiusMeters: string;
   };
+  /** QUIZ = free-text answer. */
   quiz: {
+    question: string;
+    correctAnswer: string;
+  };
+  /** CHOICE = multiple-choice test. */
+  choice: {
     question: string;
     options: QuizOptionDraft[];
     correctOptionId: string;
@@ -40,6 +46,10 @@ export type QuestConfigDraft = {
 export const DEFAULT_QUEST_CONFIG: QuestConfigDraft = {
   photo: { targetLatitude: "47.92", targetLongitude: "106.92", radiusMeters: "50" },
   quiz: {
+    question: "",
+    correctAnswer: "",
+  },
+  choice: {
     question: "",
     options: [
       { id: "a", label: "" },
@@ -113,20 +123,24 @@ export function validateQuestConfig(
       }
       return null;
     }
-    case "QUIZ":
-    case "CHOICE": {
+    case "QUIZ": {
       if (!config.quiz.question.trim()) return "Quiz question is required.";
-      if (config.quiz.options.length < 2) return "Add at least two answer options.";
+      if (!config.quiz.correctAnswer.trim()) return "Correct answer text is required.";
+      return null;
+    }
+    case "CHOICE": {
+      if (!config.choice.question.trim()) return "Question is required.";
+      if (config.choice.options.length < 2) return "Add at least two answer options.";
       const ids = new Set<string>();
-      for (const opt of config.quiz.options) {
+      for (const opt of config.choice.options) {
         if (!opt.id.trim()) return "Each option needs an ID.";
         if (!opt.label.trim()) return "Each option needs a label.";
         if (ids.has(opt.id.trim())) return "Option IDs must be unique.";
         ids.add(opt.id.trim());
       }
-      if (!config.quiz.correctOptionId) return "Select the correct answer.";
-      if (!ids.has(config.quiz.correctOptionId)) {
-        return "Correct answer must match one of the option IDs.";
+      if (!config.choice.correctOptionId) return "Select the correct option.";
+      if (!ids.has(config.choice.correctOptionId)) {
+        return "Correct option must match one of the option IDs.";
       }
       return null;
     }

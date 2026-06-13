@@ -87,17 +87,26 @@ export function buildQuestExecutionConfig(
   }
 
   if (executionType === "QUIZ") {
-    const raw = (row.quiz_data ?? row.choice_data ?? {}) as Record<string, unknown>;
-    const options = Array.isArray(raw.options)
-      ? (raw.options as Array<Record<string, unknown>>).map((o, i) => ({
-          id: str(o.id, `opt-${i}`),
-          label: str(o.label ?? o.text, `Option ${i + 1}`),
-        }))
-      : [];
-    const answerHash = str(raw.answerHash ?? raw.correctAnswerHash ?? raw.answer_hash);
-    const question = str(raw.question ?? raw.prompt, "Answer the quest question");
-    if (!answerHash || options.length === 0) return null;
-    return { type: "QUIZ", quiz: { question, options, answerHash } };
+    // dbType `choice` → multiple choice; `quiz` → free-text answer.
+    const isChoice = dbType === "choice";
+    const raw = (isChoice ? row.choice_data : row.quiz_data) ?? {};
+    const data = raw as Record<string, unknown>;
+    const answerHash = str(data.answerHash ?? data.correctAnswerHash ?? data.answer_hash);
+    const question = str(data.question ?? data.prompt, "Answer the quest question");
+    if (!answerHash) return null;
+
+    if (isChoice) {
+      const options = Array.isArray(data.options)
+        ? (data.options as Array<Record<string, unknown>>).map((o, i) => ({
+            id: str(o.id, `opt-${i}`),
+            label: str(o.label ?? o.text, `Option ${i + 1}`),
+          }))
+        : [];
+      if (options.length === 0) return null;
+      return { type: "QUIZ", quiz: { question, mode: "choice", options, answerHash } };
+    }
+
+    return { type: "QUIZ", quiz: { question, mode: "text", answerHash } };
   }
 
   if (executionType === "QR_SCAN") {

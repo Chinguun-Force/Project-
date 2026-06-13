@@ -11,21 +11,12 @@ import {
   Route,
   Trophy,
   Map,
-  User,
   Settings,
-  LogOut,
   Shield,
   UserCog,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import type { ReactNode } from "react";
 import { ShagaiIcon } from "@/components/ShagaiIcon";
 import { NomadBootScreen } from "@/components/NomadBootScreen";
@@ -43,7 +34,7 @@ const navItems = [
 ];
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-  const { user, logout, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const { role, loading: roleLoading, isStaffRole, showModeratorPanelNav, showAdminPanelNav } =
     useUserRole();
   const { userStats, refreshStats, isLoading: statsLoading } = useUserStats();
@@ -174,78 +165,28 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     {pointsBalance.toLocaleString()}
                   </span>
                 </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      className="flex items-center gap-2 hover:bg-[#322F36]/50"
-                    >
-                      <Avatar className="w-8 h-8 border-2 border-[#F4C64D]/30">
-                        <AvatarImage src={avatarUrl} />
-                        <AvatarFallback className="bg-[#322F36] text-[#F4C64D] text-xs">
-                          {displayName.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="hidden sm:block text-sm text-white max-w-[120px] truncate">
-                        {displayName}
-                      </span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    className="w-56 bg-[#322F36] border-[#322F36] text-white"
-                  >
-                    <div className="px-3 py-2">
-                      <p className="text-sm font-medium">{displayName}</p>
-                      <p className="text-xs text-[#A0A0B0] capitalize">{role}</p>
-                      <p className="text-xs text-[#F4C64D] mt-1 flex items-center gap-1">
-                        <ShagaiIcon size="xs" balance={pointsBalance} />
-                        {pointsBalance.toLocaleString()} Shagai
-                      </p>
-                    </div>
-                    <DropdownMenuSeparator className="bg-[#1A1D26]" />
-                    <DropdownMenuItem
-                      onClick={() => router.push("/profile")}
-                      className="cursor-pointer hover:bg-[#1A1D26] focus:bg-[#1A1D26]"
-                    >
-                      <User className="w-4 h-4 mr-2" />
-                      Profile
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => router.push("/settings")}
-                      className="cursor-pointer hover:bg-[#1A1D26] focus:bg-[#1A1D26]"
-                    >
-                      <Settings className="w-4 h-4 mr-2" />
-                      Settings
-                    </DropdownMenuItem>
-                    {showModeratorPanelNav && !isStaffRole && (
-                      <DropdownMenuItem
-                        onClick={() => router.push("/moderator")}
-                        className="cursor-pointer hover:bg-[#1A1D26] focus:bg-[#1A1D26]"
-                      >
-                        <UserCog className="w-4 h-4 mr-2" />
-                        Moderator Panel
-                      </DropdownMenuItem>
-                    )}
-                    {showAdminPanelNav && !isStaffRole && (
-                      <DropdownMenuItem
-                        onClick={() => router.push("/admin")}
-                        className="cursor-pointer hover:bg-[#1A1D26] focus:bg-[#1A1D26]"
-                      >
-                        <Shield className="w-4 h-4 mr-2" />
-                        Admin Panel
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSeparator className="bg-[#1A1D26]" />
-                    <DropdownMenuItem
-                      onClick={() => logout()}
-                      className="cursor-pointer text-red-400 hover:bg-[#1A1D26] focus:bg-[#1A1D26] focus:text-red-400"
-                    >
-                      <LogOut className="w-4 h-4 mr-2" />
-                      Logout
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <Button
+                  variant="ghost"
+                  onClick={() => router.push("/settings")}
+                  title="Settings"
+                  aria-label="Open settings"
+                  className={`flex items-center gap-2 hover:bg-[#322F36]/50 ${
+                    pathname === "/settings"
+                      ? "bg-[#F4C64D]/10 text-[#F4C64D]"
+                      : ""
+                  }`}
+                >
+                  {/* <Avatar className="w-8 h-8 border-2 border-[#F4C64D]/30">
+                    <AvatarImage src={avatarUrl} />
+                    <AvatarFallback className="bg-[#322F36] text-[#F4C64D] text-xs">
+                      {displayName.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar> */}
+                  {/* <span className="hidden sm:block text-sm max-w-[120px] truncate">
+                    Settings
+                  </span> */}
+                  <Settings className="w-4 h-4 text-[#A0A0B0]" />
+                </Button>
               </>
             ) : (
               <Button
