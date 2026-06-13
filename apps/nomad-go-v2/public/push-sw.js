@@ -1,5 +1,14 @@
-// Web Push handlers. Imported into the next-pwa generated service worker via
-// workboxOptions.importScripts in next.config.mjs.
+// Dedicated Web Push service worker, registered at a narrow scope so it never
+// clashes with the next-pwa app-shell worker. Self-activates immediately so a
+// fresh registration is ready to accept a push subscription without hanging.
+
+self.addEventListener("install", () => {
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
+});
 
 self.addEventListener("push", (event) => {
   let payload = {

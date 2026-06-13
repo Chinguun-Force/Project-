@@ -399,17 +399,29 @@ async function resolveActiveRoomId(
   userId: string,
   metadataRoomId?: string | null,
 ) {
-  if (metadataRoomId) return metadataRoomId
-
-  const { data: membership } = await supabase
+  // Source of truth is room_members (RLS lets a tourist read their own rows).
+  // Only ACTIVE rooms count: once a room is archived (all activities done) it
+  // drops off the dashboard so the traveler can enter the next journey's code.
+  // We honour the metadata room_id only when it's still an active membership,
+  // otherwise stale metadata would short-circuit to an inaccessible room.
+  const { data: memberships } = await supabase
     .from('room_members')
-    .select('room_id')
+    .select('room_id, joined_at, rooms(status)')
     .eq('profile_id', userId)
     .order('joined_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
 
-  return membership?.room_id ?? null
+  const activeRoomIds = (memberships ?? [])
+    .filter((m) => {
+      const room = Array.isArray(m.rooms) ? m.rooms[0] : m.rooms
+      return (room as { status?: string } | null)?.status === 'active'
+    })
+    .map((m) => m.room_id as string)
+
+  if (metadataRoomId && activeRoomIds.includes(metadataRoomId)) {
+    return metadataRoomId
+  }
+
+  return activeRoomIds[0] ?? null
 }
 
 /** Active expedition for dashboard — rooms + live room_activities timeline. */

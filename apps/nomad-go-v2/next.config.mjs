@@ -45,6 +45,29 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // Allow the dev server (HMR, RSC, dev resources) to be reached through a
+  // tunnel when testing on a phone (ngrok rotates the subdomain on free tier).
+  allowedDevOrigins: [
+    "*.ngrok-free.app",
+    "*.ngrok-free.dev",
+    "*.ngrok.app",
+    "*.ngrok.io",
+  ],
+  experimental: {
+    // Allow Server Actions to work when the app is reached through a tunnel /
+    // reverse proxy (e.g. ngrok for phone testing). Without this, Next rejects
+    // the action because the browser Origin (ngrok host) doesn't match the
+    // server Host header, which silently breaks post-login data loading.
+    serverActions: {
+      allowedOrigins: [
+        "localhost:3000",
+        "*.ngrok-free.app",
+        "*.ngrok-free.dev",
+        "*.ngrok.app",
+        "*.ngrok.io",
+      ],
+    },
+  },
 };
 
 export default withPWAConfig(nextConfig);

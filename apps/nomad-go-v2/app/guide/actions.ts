@@ -194,9 +194,29 @@ export async function updateRoomActivityStatusAction(
 
   if (error) throw new Error(error.message);
 
-  // Notify room members when an activity starts or completes.
+  // After marking an activity completed, check whether the whole expedition
+  // is now finished. The DB trigger archives the room; here we just decide
+  // which push to send and surface a flag to the caller.
+  let roomCompleted = false;
+  if (status === "completed") {
+    const { data: acts } = await supabase
+      .from("room_activities")
+      .select("status")
+      .eq("room_id", roomId);
+    const total = acts?.length ?? 0;
+    const done = (acts ?? []).filter((a) => a.status === "completed").length;
+    roomCompleted = total > 0 && total === done;
+  }
+
   const trimmedNote = note?.trim();
-  if (status === "in_progress" || status === "completed") {
+  if (roomCompleted) {
+    await sendPushToRoom(roomId, {
+      title: "Expedition complete! 🎉",
+      body: `You've finished every activity.${trimmedNote ? ` ${trimmedNote}` : " What a journey!"}`,
+      url: "/",
+      tag: `room-${roomId}-complete`,
+    });
+  } else if (status === "in_progress" || status === "completed") {
     const name = updated?.name ?? "Your activity";
     await sendPushToRoom(roomId, {
       title: status === "in_progress" ? "Activity starting" : "Activity complete",
@@ -211,7 +231,7 @@ export async function updateRoomActivityStatusAction(
 
   revalidatePath(`/guide/rooms/${roomId}`);
   revalidatePath("/guide");
-  return { success: true };
+  return { success: true, roomCompleted };
 }
 
 /** Advance: pending → in_progress → completed */

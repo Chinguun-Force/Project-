@@ -73,7 +73,11 @@ export default function Login() {
         ? Promise.all([
             getUserProgressAction(userId),
             getTouristActiveRoomAction(userId),
-          ])
+          ]).catch((err) => {
+            // Don't block navigation if warm-up data fails (e.g. behind a
+            // tunnel/proxy or flaky network) — the dashboard will refetch.
+            console.error("Post-login prefetch failed:", err);
+          })
         : Promise.resolve();
 
     await Promise.all([prefetch, waitMinBoot(Math.max(0, 700 - (Date.now() - started)))]);

@@ -11,8 +11,8 @@ import { IosInstallGuide } from "@/components/IosInstallGuide";
 import { canShowIosInstallGuide } from "@/lib/pwa/iosInstall";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
-  isPushSupported,
   getPushPermission,
+  getPushUnavailableReason,
   getExistingPushSubscription,
   subscribeToPush,
   unsubscribeFromPush,
@@ -48,7 +48,7 @@ export default function Settings() {
 
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [notifications, setNotifications] = useState(false);
-  const [notifSupported, setNotifSupported] = useState(true);
+  const [notifReason, setNotifReason] = useState<string | null>(null);
   const [notifBusy, setNotifBusy] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
   const [locationSharing, setLocationSharing] = useState(true);
@@ -60,10 +60,8 @@ export default function Settings() {
   }, []);
 
   useEffect(() => {
-    if (!isPushSupported()) {
-      setNotifSupported(false);
-      return;
-    }
+    const reason = getPushUnavailableReason();
+    setNotifReason(reason);
     getExistingPushSubscription().then((sub) => {
       setNotifications(Boolean(sub) && getPushPermission() === "granted");
     });
@@ -72,30 +70,44 @@ export default function Settings() {
   const handleNotificationsToggle = async (next: boolean) => {
     if (notifBusy) return;
 
-    if (!isPushSupported()) {
-      toast.error("Push notifications aren't supported on this device.");
-      return;
+    if (next) {
+      const reason = getPushUnavailableReason();
+      if (reason) {
+        setNotifReason(reason);
+        toast.error(reason, { duration: 8000 });
+        return;
+      }
     }
 
     setNotifBusy(true);
-    if (next) {
-      const { success, error } = await subscribeToPush();
-      setNotifications(success);
-      if (success) {
-        toast.success("Notifications enabled. You'll get quest, mission & guide alerts.");
+    try {
+      if (next) {
+        const { success, error } = await subscribeToPush();
+        setNotifications(success);
+        if (success) {
+          setNotifReason(null);
+          toast.success("Notifications enabled. You'll get quest, mission & guide alerts.");
+        } else {
+          const msg = error ?? "Could not enable notifications.";
+          setNotifReason(msg);
+          toast.error(msg, { duration: 8000 });
+        }
       } else {
-        toast.error(error ?? "Could not enable notifications.");
+        const { success, error } = await unsubscribeFromPush();
+        if (success) {
+          setNotifications(false);
+          toast.success("Notifications turned off.");
+        } else {
+          toast.error(error ?? "Could not disable notifications.", { duration: 8000 });
+        }
       }
-    } else {
-      const { success, error } = await unsubscribeFromPush();
-      if (success) {
-        setNotifications(false);
-        toast.success("Notifications turned off.");
-      } else {
-        toast.error(error ?? "Could not disable notifications.");
-      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Something went wrong enabling notifications.";
+      setNotifReason(msg);
+      toast.error(msg, { duration: 8000 });
+    } finally {
+      setNotifBusy(false);
     }
-    setNotifBusy(false);
   };
 
   if (!user) {
@@ -236,22 +248,26 @@ export default function Settings() {
               />
             </div>
 
-            <div className="flex items-center justify-between p-4">
-              <div className="flex items-center gap-3">
-                <Bell className="w-4 h-4 text-[#F4C64D]" />
-                <div>
+            <div className="flex items-start justify-between gap-3 p-4">
+              <div className="flex items-start gap-3 min-w-0">
+                <Bell className="w-4 h-4 text-[#F4C64D] mt-0.5 shrink-0" />
+                <div className="min-w-0">
                   <p className="text-sm text-white">Notifications</p>
                   <p className="text-xs text-[#A0A0B0]">
-                    {notifSupported
-                      ? "Quest, mission & guide push alerts"
-                      : "Not supported on this device/browser"}
+                    Quest, mission & guide push alerts
                   </p>
+                  {notifReason && !notifications && (
+                    <p className="mt-1 text-xs text-[#F4C64D]/90 leading-snug">
+                      {notifReason}
+                    </p>
+                  )}
                 </div>
               </div>
               <Switch
                 checked={notifications}
                 onCheckedChange={handleNotificationsToggle}
-                disabled={!notifSupported || notifBusy}
+                disabled={notifBusy}
+                className="mt-0.5 shrink-0"
               />
             </div>
 

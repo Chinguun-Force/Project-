@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import type { ReactNode } from "react";
 import { ShagaiIcon } from "@/components/ShagaiIcon";
 import { NomadBootScreen } from "@/components/NomadBootScreen";
+import { CurrencyConverter } from "@/components/CurrencyConverter";
 import {
   clearPostLoginBoot,
   shouldShowPostLoginBoot,
@@ -201,6 +202,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </header>
 
       <main className="flex-1 overflow-y-auto">{children}</main>
+
+      {/* Edge-docked traveler tool — tourists only */}
+      {user && !isStaffRole && <CurrencyConverter />}
 
       <nav className="md:hidden sticky bottom-0 z-50 bg-[#1A1D26]/95 backdrop-blur-md border-t border-[#322F36]/50">
         <div className="flex items-center justify-around py-2">

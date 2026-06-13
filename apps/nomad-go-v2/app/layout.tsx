@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { TRPCProvider } from "../src/providers/trpc";
-import Script from "next/script";
 import { PwaClient } from "@/components/PwaClient";
 import { OfflineSyncBridge } from "@/components/OfflineSyncBridge";
 import { AuthProvider } from "@/context/AuthContext";
@@ -40,20 +39,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <Script
-          src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
-          strategy="afterInteractive"
-        />
-        <Script id="onesignal-init" strategy="afterInteractive">
-          {`
-            window.OneSignalDeferred = window.OneSignalDeferred || [];
-            OneSignalDeferred.push(async function(OneSignal) {
-              await OneSignal.init({
-                appId: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID || "25093cb5-8f62-4d6d-a0d6-66d232900a27",
-              });
-            });
-          `}
-        </Script>
         <TRPCProvider>
           <AuthProvider>
             <PwaClient />
