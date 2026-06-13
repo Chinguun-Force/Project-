@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/utils/supabase/server";
 import { getSupabaseConfig } from "@/utils/supabase/config";
 import { isGuide } from "@/lib/auth/roles";
+import { sendPushToRoom } from "@/utils/notifications/webPush";
 
 export type GuideContext = {
   userId: string;
@@ -175,6 +176,7 @@ export async function updateRoomActivityStatusAction(
   activityId: string,
   roomId: string,
   status: ActivityStatus,
+  note?: string,
 ) {
   const { ctx, supabase } = await requireGuide();
   await assertGuideOwnsRoom(supabase, ctx.userId, roomId);
@@ -182,13 +184,30 @@ export async function updateRoomActivityStatusAction(
   const allowed: ActivityStatus[] = ["pending", "in_progress", "completed"];
   if (!allowed.includes(status)) throw new Error("Invalid status");
 
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("room_activities")
     .update({ status })
     .eq("id", activityId)
-    .eq("room_id", roomId);
+    .eq("room_id", roomId)
+    .select("name")
+    .maybeSingle();
 
   if (error) throw new Error(error.message);
+
+  // Notify room members when an activity starts or completes.
+  const trimmedNote = note?.trim();
+  if (status === "in_progress" || status === "completed") {
+    const name = updated?.name ?? "Your activity";
+    await sendPushToRoom(roomId, {
+      title: status === "in_progress" ? "Activity starting" : "Activity complete",
+      body:
+        status === "in_progress"
+          ? `${name} is starting now.${trimmedNote ? ` ${trimmedNote}` : ""}`
+          : `${name} is done.${trimmedNote ? ` ${trimmedNote}` : ""}`,
+      url: "/",
+      tag: `room-${roomId}-activity`,
+    });
+  }
 
   revalidatePath(`/guide/rooms/${roomId}`);
   revalidatePath("/guide");
@@ -196,7 +215,11 @@ export async function updateRoomActivityStatusAction(
 }
 
 /** Advance: pending → in_progress → completed */
-export async function advanceRoomActivityAction(activityId: string, roomId: string) {
+export async function advanceRoomActivityAction(
+  activityId: string,
+  roomId: string,
+  note?: string,
+) {
   const { ctx, supabase } = await requireGuide();
   await assertGuideOwnsRoom(supabase, ctx.userId, roomId);
 
@@ -217,5 +240,29 @@ export async function advanceRoomActivityAction(activityId: string, roomId: stri
         ? "completed"
         : "completed";
 
-  return updateRoomActivityStatusAction(activityId, roomId, next);
+  return updateRoomActivityStatusAction(activityId, roomId, next, note);
+}
+
+/**
+ * Guide sends a free-form tip/reminder to everyone in their room
+ * (e.g. "Bring water before the horse ride", "Don't forget your camera").
+ */
+export async function sendRoomReminderAction(roomId: string, message: string) {
+  const { ctx, supabase } = await requireGuide();
+  await assertGuideOwnsRoom(supabase, ctx.userId, roomId);
+
+  const trimmed = message.trim();
+  if (!trimmed) throw new Error("Reminder message is empty");
+  if (trimmed.length > 280) throw new Error("Reminder is too long (max 280 chars)");
+
+  const delivered = await sendPushToRoom(roomId, {
+    title: ctx.companyName
+      ? `Guide tip · ${ctx.companyName}`
+      : "Tip from your guide",
+    body: trimmed,
+    url: "/",
+    tag: `room-${roomId}-reminder`,
+  });
+
+  return { success: true, delivered };
 }

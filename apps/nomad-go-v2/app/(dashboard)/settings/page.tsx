@@ -6,9 +6,17 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { trpc } from "@/providers/trpc";
+import { toast } from "sonner";
 import { IosInstallGuide } from "@/components/IosInstallGuide";
 import { canShowIosInstallGuide } from "@/lib/pwa/iosInstall";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  isPushSupported,
+  getPushPermission,
+  getExistingPushSubscription,
+  subscribeToPush,
+  unsubscribeFromPush,
+} from "@/lib/notifications/pushClient";
 import {
   Settings as SettingsIcon,
   Volume2,
@@ -39,7 +47,9 @@ export default function Settings() {
   });
 
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [notifications, setNotifications] = useState(true);
+  const [notifications, setNotifications] = useState(false);
+  const [notifSupported, setNotifSupported] = useState(true);
+  const [notifBusy, setNotifBusy] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
   const [locationSharing, setLocationSharing] = useState(true);
   const [showIosGuide, setShowIosGuide] = useState(false);
@@ -48,6 +58,45 @@ export default function Settings() {
   useEffect(() => {
     setShowIosInstallSection(canShowIosInstallGuide());
   }, []);
+
+  useEffect(() => {
+    if (!isPushSupported()) {
+      setNotifSupported(false);
+      return;
+    }
+    getExistingPushSubscription().then((sub) => {
+      setNotifications(Boolean(sub) && getPushPermission() === "granted");
+    });
+  }, []);
+
+  const handleNotificationsToggle = async (next: boolean) => {
+    if (notifBusy) return;
+
+    if (!isPushSupported()) {
+      toast.error("Push notifications aren't supported on this device.");
+      return;
+    }
+
+    setNotifBusy(true);
+    if (next) {
+      const { success, error } = await subscribeToPush();
+      setNotifications(success);
+      if (success) {
+        toast.success("Notifications enabled. You'll get quest, mission & guide alerts.");
+      } else {
+        toast.error(error ?? "Could not enable notifications.");
+      }
+    } else {
+      const { success, error } = await unsubscribeFromPush();
+      if (success) {
+        setNotifications(false);
+        toast.success("Notifications turned off.");
+      } else {
+        toast.error(error ?? "Could not disable notifications.");
+      }
+    }
+    setNotifBusy(false);
+  };
 
   if (!user) {
     return (
@@ -193,13 +242,16 @@ export default function Settings() {
                 <div>
                   <p className="text-sm text-white">Notifications</p>
                   <p className="text-xs text-[#A0A0B0]">
-                    Quest and mission alerts
+                    {notifSupported
+                      ? "Quest, mission & guide push alerts"
+                      : "Not supported on this device/browser"}
                   </p>
                 </div>
               </div>
               <Switch
                 checked={notifications}
-                onCheckedChange={setNotifications}
+                onCheckedChange={handleNotificationsToggle}
+                disabled={!notifSupported || notifBusy}
               />
             </div>
 

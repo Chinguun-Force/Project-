@@ -6,6 +6,7 @@ import {
   formatTourCardMissions,
 } from '@/lib/tours/formatTourCard'
 import { mapRoomToActiveExpedition } from '@/lib/expedition/mapRoomToDashboard'
+import { sendPushToUsers } from '@/utils/notifications/webPush'
 
 // 1. Fetch All Live Missions from db
 export async function getMissionsAction() {
@@ -49,7 +50,7 @@ export async function completeMissionAction(userId: string, missionId: string) {
 
   const { data: mission, error: missionError } = await supabase
     .from('missions')
-    .select('id, xp_reward')
+    .select('id, xp_reward, title')
     .eq('id', missionId)
     .single()
 
@@ -90,6 +91,15 @@ export async function completeMissionAction(userId: string, missionId: string) {
   }
 
   const reward = await grantUserRewardsAction(userId, xpReward, 0)
+
+  // Best-effort push (valuable when geofence dwell auto-completes in background).
+  await sendPushToUsers([userId], {
+    title: "Mission complete! 🎉",
+    body: `${mission.title ?? "Mission"} cleared — +${xpReward} XP earned.`,
+    url: "/missions",
+    tag: "mission-complete",
+  })
+
   return { ...reward, xpReward }
 }
 
@@ -368,6 +378,13 @@ export async function joinRoomByCodeAction(roomCode: string) {
   const { revalidatePath } = await import('next/cache')
   revalidatePath('/')
   revalidatePath('/tours')
+
+  await sendPushToUsers([user.id], {
+    title: "You joined the expedition! 🏔️",
+    body: "Your live agenda is ready. Watch for tips from your guide.",
+    url: "/",
+    tag: "room-join",
+  })
 
   return {
     success: true as const,
