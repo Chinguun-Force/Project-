@@ -14,6 +14,7 @@ import {
   Settings,
   Shield,
   UserCog,
+  Lock,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -31,8 +32,10 @@ const navItems = [
   { path: "/quests", label: "Quests", icon: MapPin },
   { path: "/missions", label: "Missions", icon: Route },
   { path: "/tours", label: "Tours", icon: Trophy },
-  { path: "/map", label: "Map", icon: Map },
-];
+  { path: "/map", label: "Map", icon: Map, locked: true },
+] as const;
+
+type NavItem = (typeof navItems)[number] & { locked?: boolean };
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { user, isLoading: authLoading } = useAuth();
@@ -98,7 +101,21 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         ? staffPanelNav
         : navItems;
 
-  const staffNav: typeof navItems = [];
+  const staffNav: NavItem[] = [];
+
+  const handleNavClick = (item: NavItem) => {
+    if (item.locked) return;
+    router.push(item.path);
+  };
+
+  const navButtonClass = (item: NavItem, isActive: boolean) => {
+    if (item.locked) {
+      return "text-[#A0A0B0]/60 cursor-not-allowed opacity-60 hover:bg-transparent hover:text-[#A0A0B0]/60";
+    }
+    return isActive
+      ? "text-[#F4C64D] bg-[#F4C64D]/10"
+      : "text-[#A0A0B0] hover:text-white hover:bg-[#322F36]/50";
+  };
 
   return (
     <div className="min-h-screen bg-[#1A1D26] text-white flex flex-col">
@@ -117,20 +134,25 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
           <nav className="hidden md:flex items-center gap-1">
             {primaryNav.map((item) => {
-              const isActive = pathname === item.path;
+              const isActive = !item.locked && pathname === item.path;
               return (
                 <Button
                   key={item.path}
                   variant="ghost"
-                  onClick={() => router.push(item.path)}
-                  className={`flex items-center gap-2 transition-all ${
-                    isActive
-                      ? "text-[#F4C64D] bg-[#F4C64D]/10"
-                      : "text-[#A0A0B0] hover:text-white hover:bg-[#322F36]/50"
-                  }`}
+                  disabled={item.locked}
+                  aria-disabled={item.locked}
+                  title={item.locked ? "Coming soon" : item.label}
+                  onClick={() => handleNavClick(item)}
+                  className={`flex items-center gap-2 transition-all ${navButtonClass(item, isActive)}`}
                 >
                   <item.icon className="w-4 h-4" />
                   <span className="text-sm font-medium">{item.label}</span>
+                  {item.locked ? (
+                    <span className="flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wide text-[#A0A0B0]">
+                      <Lock className="w-3 h-3" />
+                      Soon
+                    </span>
+                  ) : null}
                 </Button>
               );
             })}
@@ -140,12 +162,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 <Button
                   key={item.path}
                   variant="ghost"
-                  onClick={() => router.push(item.path)}
-                  className={`flex items-center gap-2 transition-all ${
-                    isActive
-                      ? "text-[#F4C64D] bg-[#F4C64D]/10"
-                      : "text-[#A0A0B0] hover:text-white hover:bg-[#322F36]/50"
-                  }`}
+                  onClick={() => handleNavClick(item)}
+                  className={`flex items-center gap-2 transition-all ${navButtonClass(item, isActive)}`}
                 >
                   <item.icon className="w-4 h-4" />
                   <span className="text-sm font-medium">{item.label}</span>
@@ -209,17 +227,30 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <nav className="md:hidden sticky bottom-0 z-50 bg-[#1A1D26]/95 backdrop-blur-md border-t border-[#322F36]/50">
         <div className="flex items-center justify-around py-2">
           {[...primaryNav, ...staffNav].map((item) => {
-            const isActive = pathname === item.path;
+            const isActive = !item.locked && pathname === item.path;
             return (
               <button
                 key={item.path}
-                onClick={() => router.push(item.path)}
+                type="button"
+                disabled={item.locked}
+                aria-disabled={item.locked}
+                title={item.locked ? "Coming soon" : item.label}
+                onClick={() => handleNavClick(item)}
                 className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-lg transition-all ${
-                  isActive ? "text-[#F4C64D]" : "text-[#A0A0B0] hover:text-white"
+                  item.locked
+                    ? "text-[#A0A0B0]/50 cursor-not-allowed opacity-60"
+                    : isActive
+                      ? "text-[#F4C64D]"
+                      : "text-[#A0A0B0] hover:text-white"
                 }`}
               >
                 <item.icon className="w-5 h-5" />
                 <span className="text-[10px] font-medium">{item.label}</span>
+                {item.locked ? (
+                  <span className="text-[8px] font-bold uppercase tracking-wide text-[#A0A0B0]">
+                    Soon
+                  </span>
+                ) : null}
               </button>
             );
           })}

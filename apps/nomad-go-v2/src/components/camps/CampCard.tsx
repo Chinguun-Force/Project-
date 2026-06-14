@@ -18,10 +18,13 @@ export default function CampCard({ camp }: CampCardProps) {
       </div>
       <div className="flex flex-col items-end gap-1">
         {camp.isBlurred ? (
-          <button className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#F4C64D]/10 text-[#F4C64D] border border-[#F4C64D]/30 flex items-center gap-1">
+          <span
+            className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#322F36] text-[#A0A0B0] border border-[#322F36]/80 flex items-center gap-1 cursor-not-allowed select-none"
+            aria-disabled="true"
+          >
             <Lock size={10} />
-            Unlock ★
-          </button>
+            Coming Soon
+          </span>
         ) : (
           <span className="text-[13px] font-extrabold text-white">
             ₮{camp.pricePerNight.toLocaleString()}

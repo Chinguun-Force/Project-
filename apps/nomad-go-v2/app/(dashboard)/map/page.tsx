@@ -1,53 +1,34 @@
 "use client";
 
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import type { Aimag } from '@/lib/data/aimags';
-import MongoliaMap from '@/components/map/MongoliaMap';
-import ProvincePanel from '@/components/map/ProvincePanel';
-
-const pageVariants = {
-  initial: { opacity: 0, y: 12 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.28, ease: 'easeOut' as const } },
-  exit: { opacity: 0, y: -8, transition: { duration: 0.18 } },
-};
+import { useRouter } from "next/navigation";
+import { Lock, Map } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function MapPage() {
-  const [selected, setSelected] = useState<Aimag | null>(null);
-  const [viewMode, setViewMode] = useState<'aimag' | 'camp'>('aimag');
+  const router = useRouter();
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" className="pb-24">
-      <div className="px-4 pt-4">
-        <h1 className="font-display text-[26px] font-black text-white mb-1">Explore Map</h1>
-        <p className="text-[13px] text-[#A0A0B0] mb-3">Tap an aimag to discover camps & quests</p>
-      </div>
-
-      {/* Toggle */}
-      <div className="mx-4 mb-3 flex bg-[#322F36] rounded-full p-1 border border-[#322F36]/50">
-        <button
-          onClick={() => setViewMode('aimag')}
-          className={`flex-1 text-[11px] font-bold py-1.5 rounded-full transition-all ${
-            viewMode === 'aimag' ? 'bg-[#A8C69F] text-[#1A1D26] shadow-sm' : 'text-[#A0A0B0] hover:text-white'
-          }`}
+    <div className="min-h-[60vh] flex items-center justify-center px-4 pb-24">
+      <div className="max-w-md w-full text-center rounded-3xl border border-[#322F36] bg-[#322F36]/40 p-8">
+        <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#1A1D26] border border-[#322F36]">
+          <Map className="w-8 h-8 text-[#A0A0B0]/70" />
+        </div>
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-[#1A1D26] border border-[#322F36] px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-[#A0A0B0] mb-4">
+          <Lock className="w-3 h-3" />
+          Coming Soon
+        </div>
+        <h1 className="text-2xl font-bold text-white mb-2">Explore Map</h1>
+        <p className="text-sm text-[#A0A0B0] mb-6">
+          Interactive aimag map and camp discovery are on the way. Check back in a
+          future update.
+        </p>
+        <Button
+          onClick={() => router.push("/")}
+          className="bg-[#F4C64D] hover:bg-[#F4C64D]/90 text-[#1A1D26] font-semibold"
         >
-          Аймаг
-        </button>
-        <button
-          onClick={() => setViewMode('camp')}
-          className={`flex-1 text-[11px] font-bold py-1.5 rounded-full transition-all ${
-            viewMode === 'camp' ? 'bg-[#A8C69F] text-[#1A1D26] shadow-sm' : 'text-[#A0A0B0] hover:text-white'
-          }`}
-        >
-          Кемп
-        </button>
+          Back to Dashboard
+        </Button>
       </div>
-
-      {/* Map container */}
-      <div className="relative mx-4">
-        <MongoliaMap selected={selected} onSelect={setSelected} viewMode={viewMode} />
-        <ProvincePanel selected={selected} onClose={() => setSelected(null)} />
-      </div>
-    </motion.div>
+    </div>
   );
 }

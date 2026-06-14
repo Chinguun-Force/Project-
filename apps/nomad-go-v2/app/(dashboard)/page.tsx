@@ -10,6 +10,7 @@ import {
   Trophy,
   Target,
   Award,
+  Lock,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -579,26 +580,34 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Right Column: Redeem Bridge */}
+            {/* Right Column: Redeem Bridge (locked — coming soon) */}
             <div className="lg:col-span-1">
-              <button 
-                onClick={() => router.push('/profile/redeem')}
-                className="w-full h-full min-h-[250px] relative overflow-hidden group rounded-3xl bg-card border border-border p-6 flex flex-col items-center justify-center text-center transition-all hover:border-emerald-500/50"
+              <div
+                aria-disabled="true"
+                className="w-full h-full min-h-[250px] relative overflow-hidden rounded-3xl bg-card border border-border/80 p-6 flex flex-col items-center justify-center text-center opacity-90 cursor-not-allowed select-none"
               >
-                <div className="absolute inset-0 bg-emerald-500/5 group-hover:bg-emerald-500/10 transition-colors duration-500" />
+                <div className="absolute inset-0 bg-muted/20" />
+                <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5 rounded-full bg-[#322F36] border border-[#322F36] px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-[#A0A0B0]">
+                  <Lock className="w-3 h-3" />
+                  Coming Soon
+                </div>
                 <div className="relative z-10 flex flex-col items-center">
-                  <div className="mb-6 relative z-10 flex items-center justify-center">
-                    <div className="absolute w-32 h-32 bg-emerald-400 blur-2xl opacity-25 group-hover:opacity-45 transition-opacity rounded-full" />
+                  <div className="mb-6 relative z-10 flex items-center justify-center opacity-60 grayscale">
+                    <div className="absolute w-32 h-32 bg-emerald-400 blur-2xl opacity-15 rounded-full" />
                     <ShagaiIcon size="xl" className="relative z-10" />
                   </div>
-                  <h3 className="text-xl font-bold text-foreground mb-3 leading-tight max-w-[200px]">
+                  <h3 className="text-xl font-bold text-muted-foreground mb-3 leading-tight max-w-[200px]">
                     Redeem Shagai for Exclusive Rewards
                   </h3>
-                  <div className="flex items-center text-sm font-medium text-emerald-400 bg-emerald-500/10 px-5 py-2 rounded-full group-hover:bg-emerald-500/20 transition-colors">
-                    Explore Rewards <ChevronRight className="w-4 h-4 ml-1" />
+                  <p className="text-sm text-muted-foreground/80 max-w-[220px] mb-4">
+                    Reward shop is on the way — keep collecting Shagai.
+                  </p>
+                  <div className="flex items-center text-sm font-medium text-[#A0A0B0] bg-[#322F36]/80 px-5 py-2 rounded-full border border-[#322F36]">
+                    <Lock className="w-3.5 h-3.5 mr-2" />
+                    Coming Soon
                   </div>
                 </div>
-              </button>
+              </div>
             </div>
 
           </div>

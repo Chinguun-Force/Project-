@@ -6,6 +6,10 @@ import {
   getExchangeRatesAction,
   type ExchangeRates,
 } from "@/app/actions/currencyActions";
+import {
+  readExchangeRatesCache,
+  writeExchangeRatesCache,
+} from "@/lib/exchangeRatesCache";
 import { Spinner } from "@/components/ui/spinner";
 
 /** Tourist-friendly currencies pinned to the top of the pickers. */
@@ -62,6 +66,8 @@ export function CurrencyConverter() {
   const [data, setData] = useState<ExchangeRates | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [usingOfflineCache, setUsingOfflineCache] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
 
   // Tourists usually read a Tögrög price in a shop and want it in their own
   // currency, so the input side defaults to MNT.
@@ -69,26 +75,93 @@ export function CurrencyConverter() {
   const [from, setFrom] = useState("MNT");
   const [to, setTo] = useState("USD");
 
-  const load = async () => {
+  const applyRates = (rates: ExchangeRates, fromCache: boolean) => {
+    setData(rates);
+    setUsingOfflineCache(fromCache);
+    setError(null);
+  };
+
+  const load = async (options?: { forceNetwork?: boolean }) => {
+    const cached = readExchangeRatesCache();
+
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      if (cached) {
+        applyRates(cached, true);
+      } else {
+        setError(
+          "No saved rates yet. Open the converter once while online, then it works offline.",
+        );
+      }
+      return;
+    }
+
+    if (cached && !options?.forceNetwork) {
+      applyRates(cached, false);
+    }
+
     setLoading(true);
     setError(null);
     try {
       const rates = await getExchangeRatesAction();
-      setData(rates);
+      writeExchangeRatesCache(rates);
+      applyRates(rates, false);
+      setUsingOfflineCache(false);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not load exchange rates.",
-      );
+      if (cached) {
+        applyRates(cached, true);
+      } else {
+        setError(
+          err instanceof Error ? err.message : "Could not load exchange rates.",
+        );
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // Lazy-load rates the first time the panel is opened.
+  // Hydrate from localStorage immediately, then refresh when online.
+  useEffect(() => {
+    const cached = readExchangeRatesCache();
+    if (cached) {
+      setData(cached);
+      setUsingOfflineCache(typeof navigator !== "undefined" && !navigator.onLine);
+    }
+
+    const handleOffline = () => {
+      setIsOffline(true);
+      const local = readExchangeRatesCache();
+      if (local) {
+        setData(local);
+        setUsingOfflineCache(true);
+        setError(null);
+      }
+    };
+
+    const handleOnline = () => {
+      setIsOffline(false);
+      void load({ forceNetwork: true });
+    };
+
+    setIsOffline(!navigator.onLine);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    if (navigator.onLine) {
+      void load();
+    }
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Ensure rates exist when the panel opens (e.g. first visit was fully offline).
   useEffect(() => {
     if (open && !data && !loading) void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, data, loading]);
 
   const options = useMemo(() => {
     if (!data) return POPULAR;
@@ -161,15 +234,20 @@ export function CurrencyConverter() {
                 Currency Converter
               </h3>
               <p className="text-xs text-[#A0A0B0]">
-                {data ? `Rates as of ${data.date}` : "Live travel rates"}
+                {data
+                  ? usingOfflineCache || isOffline
+                    ? `Offline · saved rates (${data.date})`
+                    : `Rates as of ${data.date}`
+                  : "Live travel rates"}
               </p>
             </div>
           </div>
           <button
             type="button"
-            onClick={load}
-            disabled={loading}
+            onClick={() => void load({ forceNetwork: true })}
+            disabled={loading || isOffline}
             aria-label="Refresh rates"
+            title={isOffline ? "Connect to refresh rates" : "Refresh rates"}
             className="w-8 h-8 rounded-lg flex items-center justify-center text-[#A0A0B0] hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
           >
             {loading ? (
@@ -185,7 +263,7 @@ export function CurrencyConverter() {
             <p className="text-sm text-[#A0A0B0] mb-3">{error}</p>
             <button
               type="button"
-              onClick={load}
+              onClick={() => void load({ forceNetwork: true })}
               className="text-sm font-semibold text-emerald-400 hover:text-emerald-300"
             >
               Try again
