@@ -195,7 +195,7 @@ export default function GuideRoomTimelinePage() {
               >
                 <span>{m.title}</span>
                 <span className="text-xs text-[#A0A0B0] shrink-0">
-                  {m.radius_meters}m · +{m.xp_reward ?? 0} XP
+                  {(m.xp_reward ?? 0) > 0 ? `+${m.xp_reward} XP` : null}
                 </span>
               </li>
             ))}

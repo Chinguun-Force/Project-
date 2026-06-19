@@ -11,9 +11,11 @@ import {
   getMissions,
   createQuest,
   getTenants,
+  getTenantsWithDetails,
   getAdminDepartures,
   createTenant,
   assignModeratorToTenant,
+  type TenantWithDetails,
 } from "./actions";
 import {
   Shield,
@@ -65,7 +67,7 @@ export default function Admin() {
 
   // Data states
   const [users, setUsers] = useState<any[]>([]);
-  const [tenants, setTenants] = useState<any[]>([]);
+  const [tenants, setTenants] = useState<TenantWithDetails[]>([]);
   const [missions, setMissions] = useState<any[]>([]);
   const [departures, setDepartures] = useState<
     {
@@ -108,7 +110,7 @@ export default function Admin() {
     try {
       const [uData, tData, mData, dData] = await Promise.all([
         getUsers(),
-        getTenants(),
+        getTenantsWithDetails(),
         getMissions(),
         getAdminDepartures(),
       ]);
@@ -127,10 +129,12 @@ export default function Admin() {
     const newRole = selectedRoles[userId] || currentRole;
     if (newRole === currentRole) return;
 
-    const needsTenant = newRole === "moderator" || newRole === "guide";
-    const tenantId = selectedTenants[userId] || users.find((u) => u.id === userId)?.tenant_id;
+    const needsTenant = newRole === "moderator";
+    const tenantId = needsTenant
+      ? selectedTenants[userId] || users.find((u) => u.id === userId)?.tenant_id
+      : null;
     if (needsTenant && !tenantId) {
-      toast.error("Select a travel company for moderator or guide roles.");
+      toast.error("Select a travel company for moderator role.");
       return;
     }
 
@@ -162,7 +166,7 @@ export default function Admin() {
       const created = await createTenant(newCompanyName);
       toast.success(`Company "${created.name}" created`);
       setNewCompanyName("");
-      const tData = await getTenants();
+      const tData = await getTenantsWithDetails();
       setTenants(tData || []);
     } catch (err: any) {
       toast.error(err.message);
@@ -337,11 +341,12 @@ export default function Admin() {
 
             {/* COMPANIES TAB */}
             {activeTab === "companies" && (
-              <div className="space-y-8 max-w-2xl mx-auto">
-                <div>
+              <div className="space-y-8">
+                <div className="max-w-2xl">
                   <h2 className="text-xl font-bold text-white mb-2">Travel companies (tenants)</h2>
                   <p className="text-sm text-[#A0A0B0] mb-4">
-                    Create a company, then assign a moderator to own and run it (trips, rooms, guides).
+                    Create a company, assign a moderator (e.g. Central Mongolia → their moderator
+                    owns trips, rooms, and company profile on the marketplace).
                   </p>
                   <div className="flex gap-2">
                     <Input
@@ -361,25 +366,75 @@ export default function Admin() {
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-semibold text-[#A0A0B0] mb-2">Existing companies</h3>
-                  <ul className="space-y-2">
-                    {tenants.length === 0 ? (
-                      <li className="text-sm text-[#A0A0B0]">No companies yet.</li>
-                    ) : (
-                      tenants.map((t) => (
-                        <li
+                  <h3 className="text-sm font-semibold text-[#A0A0B0] mb-3">
+                    All companies ({tenants.length})
+                  </h3>
+                  {tenants.length === 0 ? (
+                    <p className="text-sm text-[#A0A0B0]">No companies yet.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {tenants.map((t) => (
+                        <div
                           key={t.id}
-                          className="flex items-center justify-between rounded-lg bg-[#1A1D26] px-3 py-2 text-white text-sm"
+                          className="rounded-xl border border-[#322F36] bg-[#1A1D26] p-4"
                         >
-                          <span>{t.name}</span>
-                          <span className="text-xs text-[#A0A0B0] font-mono">{t.id.slice(0, 8)}…</span>
-                        </li>
-                      ))
-                    )}
-                  </ul>
+                          <div className="flex items-start gap-3">
+                            <div className="w-12 h-12 rounded-lg bg-[#322F36] border border-[#322F36] overflow-hidden flex items-center justify-center shrink-0">
+                              {t.logo_url ? (
+                                <img
+                                  src={t.logo_url}
+                                  alt=""
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <Building2 className="w-5 h-5 text-[#A0A0B0]" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <h4 className="font-bold text-white">{t.name}</h4>
+                              {t.location && (
+                                <p className="text-xs text-[#A0A0B0] mt-0.5">{t.location}</p>
+                              )}
+                              {t.description && (
+                                <p className="text-sm text-[#A0A0B0] mt-2 line-clamp-2">
+                                  {t.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="mt-4 pt-3 border-t border-[#322F36] space-y-2 text-sm">
+                            <div>
+                              <span className="text-[#A0A0B0] text-xs uppercase tracking-wide">
+                                Moderator
+                              </span>
+                              {t.moderators.length === 0 ? (
+                                <p className="text-[#F2994A] mt-1">Not assigned yet</p>
+                              ) : (
+                                <ul className="mt-1 space-y-1">
+                                  {t.moderators.map((m) => (
+                                    <li key={m.id} className="text-white">
+                                      {m.full_name ?? "Unnamed"}{" "}
+                                      <span className="text-[#A0A0B0] text-xs">
+                                        {m.email ? `· ${m.email}` : ""}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                            <div className="flex gap-4 text-xs text-[#A0A0B0]">
+                              <span>{t.published_trip_count} published tours</span>
+                              <span>{t.guide_count} guides</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                <div className="border-t border-[#1A1D26] pt-6">
+                <div className="border-t border-[#1A1D26] pt-6 max-w-2xl">
                   <h3 className="text-lg font-bold text-white mb-2">Assign company moderator</h3>
                   <div className="space-y-3">
                     <select
@@ -441,8 +496,8 @@ export default function Admin() {
                       const RoleIcon = roleIcons[u.role] ?? Compass;
                       const effectiveRole =
                         selectedRoles[u.id] ?? (u.role === "user" ? "tourist" : u.role);
-                      const showTenantPicker =
-                        effectiveRole === "moderator" || effectiveRole === "guide";
+                      const showTenantPicker = effectiveRole === "moderator";
+                      const guideRoleNote = effectiveRole === "guide";
                       return (
                         <tr key={u.id} className="border-b border-[#1A1D26]/50 hover:bg-[#1A1D26]/30">
                           <td className="p-3">
@@ -492,6 +547,11 @@ export default function Admin() {
                                     </option>
                                   ))}
                                 </select>
+                              )}
+                              {guideRoleNote && (
+                                <span className="text-[10px] text-[#A0A0B0]">
+                                  Unassigned guide — company links via moderator hire + guide confirm
+                                </span>
                               )}
                             </div>
                           </td>

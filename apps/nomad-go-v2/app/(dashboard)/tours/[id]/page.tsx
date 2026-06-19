@@ -7,6 +7,7 @@ import { Calendar, Clock, MapPin, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import TourItinerary from "@/components/nomad/TourItinerary";
+import { CompanyProfileCard } from "@/components/company/CompanyProfileCard";
 
 export default function TourDetailsPage() {
   const params = useParams();
@@ -154,6 +155,13 @@ export default function TourDetailsPage() {
             </div>
           )}
         </div>
+
+        {tour.company && (
+          <div className="mb-12">
+            <h2 className="text-2xl font-bold text-foreground mb-4">Your tour operator</h2>
+            <CompanyProfileCard company={tour.company} />
+          </div>
+        )}
 
         <div className="mb-12">
           <div className="flex items-center justify-between mb-6">

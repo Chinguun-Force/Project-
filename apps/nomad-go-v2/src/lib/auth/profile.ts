@@ -60,6 +60,8 @@ export function tenantIdForRole(
   tenantId: string | null,
 ): string | null {
   if (role === "admin" || role === "tourist" || role === "user") return null;
-  if (role === "moderator" || role === "guide") return tenantId;
+  // Guides join a company only after accepting a moderator hire invite.
+  if (role === "guide") return null;
+  if (role === "moderator") return tenantId;
   return null;
 }

@@ -64,12 +64,9 @@ export async function updateUserRole(
   const profileRole = toProfileRole(newRole);
   const resolvedTenantId = tenantIdForRole(profileRole, tenantId ?? null);
 
-  if (
-    (profileRole === "moderator" || profileRole === "guide") &&
-    !resolvedTenantId
-  ) {
+  if (profileRole === "moderator" && !resolvedTenantId) {
     throw new Error(
-      "Company roles (moderator, guide) require a travel company (tenant). Assign one in the Companies tab first.",
+      "Company roles (moderator) require a travel company (tenant). Assign one in the Companies tab first.",
     );
   }
 
@@ -98,11 +95,82 @@ export async function getTenants() {
   const supabase = getAdminSupabase();
   const { data, error } = await supabase
     .from("tenants")
-    .select("id, name, created_at")
+    .select(
+      "id, name, description, logo_url, contact_email, website, location, created_at, updated_at",
+    )
     .order("name");
 
   if (error) throw new Error(error.message);
   return data ?? [];
+}
+
+export type TenantWithDetails = {
+  id: string;
+  name: string;
+  description: string | null;
+  logo_url: string | null;
+  contact_email: string | null;
+  website: string | null;
+  location: string | null;
+  created_at: string;
+  updated_at: string;
+  moderators: { id: string; full_name: string | null; email: string | null }[];
+  published_trip_count: number;
+  guide_count: number;
+};
+
+/** All travel companies with assigned moderators and marketplace stats (admin view). */
+export async function getTenantsWithDetails(): Promise<TenantWithDetails[]> {
+  const supabase = getAdminSupabase();
+
+  const [tenantsRes, profilesRes, tripsRes, usersRes] = await Promise.all([
+    supabase
+      .from("tenants")
+      .select(
+        "id, name, description, logo_url, contact_email, website, location, created_at, updated_at",
+      )
+      .order("name"),
+    supabase
+      .from("profiles")
+      .select("id, full_name, role, tenant_id")
+      .in("role", ["moderator", "guide"]),
+    supabase.from("trips").select("tenant_id, is_published"),
+    supabase.from("users").select("id, email"),
+  ]);
+
+  if (tenantsRes.error) throw new Error(tenantsRes.error.message);
+  if (profilesRes.error) throw new Error(profilesRes.error.message);
+  if (tripsRes.error) throw new Error(tripsRes.error.message);
+  if (usersRes.error) throw new Error(usersRes.error.message);
+
+  const emailById = new Map((usersRes.data ?? []).map((u) => [u.id, u.email]));
+  const profiles = profilesRes.data ?? [];
+  const trips = tripsRes.data ?? [];
+
+  return (tenantsRes.data ?? []).map((tenant) => {
+    const moderators = profiles
+      .filter((p) => p.tenant_id === tenant.id && p.role === "moderator")
+      .map((p) => ({
+        id: p.id,
+        full_name: p.full_name,
+        email: emailById.get(p.id) ?? null,
+      }));
+
+    const published_trip_count = trips.filter(
+      (t) => t.tenant_id === tenant.id && t.is_published,
+    ).length;
+
+    const guide_count = profiles.filter(
+      (p) => p.tenant_id === tenant.id && p.role === "guide",
+    ).length;
+
+    return {
+      ...tenant,
+      moderators,
+      published_trip_count,
+      guide_count,
+    };
+  });
 }
 
 export async function createTenant(name: string) {

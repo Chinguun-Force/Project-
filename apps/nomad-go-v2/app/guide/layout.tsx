@@ -27,17 +27,19 @@ export default async function GuideLayout({
     redirect("/");
   }
 
-  if (!profile?.tenant_id) {
-    redirect("/");
-  }
-
   const tenantJoin = profile.tenants as { name: string } | { name: string }[] | null;
-  const companyName = Array.isArray(tenantJoin)
-    ? tenantJoin[0]?.name ?? null
-    : tenantJoin?.name ?? null;
+  const companyName = profile.tenant_id
+    ? Array.isArray(tenantJoin)
+      ? tenantJoin[0]?.name ?? null
+      : tenantJoin?.name ?? null
+    : null;
 
   return (
-    <GuideShell companyName={companyName} guideName={profile.full_name}>
+    <GuideShell
+      companyName={companyName}
+      guideName={profile.full_name}
+      awaitingCompany={!profile.tenant_id}
+    >
       {children}
     </GuideShell>
   );

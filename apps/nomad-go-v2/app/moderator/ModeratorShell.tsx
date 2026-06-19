@@ -9,12 +9,14 @@ import {
   DoorOpen,
   LogOut,
   Compass,
+  Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ReactNode } from "react";
 
 const navItems = [
   { path: "/moderator", label: "Dashboard", icon: LayoutDashboard, exact: true },
+  { path: "/moderator/company", label: "Company", icon: Building2, exact: false },
   { path: "/moderator/team", label: "Team", icon: Users, exact: false },
   { path: "/moderator/templates", label: "Tour templates", icon: Map, exact: false },
   { path: "/moderator/rooms", label: "Rooms", icon: DoorOpen, exact: false },
@@ -78,13 +80,31 @@ export default function ModeratorShell({
             onClick={() => logout()}
           >
             <LogOut className="w-4 h-4 mr-2" />
-            Log out
+            Гарах
           </Button>
         </div>
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="md:hidden sticky top-0 z-40 bg-[#1A1D26]/95 border-b border-[#322F36] px-3 py-2">
+        <header className="md:hidden sticky top-0 z-40 bg-[#1A1D26]/95 border-b border-[#322F36] px-4 py-3 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => router.push("/moderator")}
+            className="flex items-center gap-2 text-sm font-semibold text-[#F4C64D] min-w-0"
+          >
+            <Compass className="w-4 h-4 shrink-0" />
+            <span className="truncate">{companyName ?? "Moderator"}</span>
+          </button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => logout()}
+            className="text-[#A0A0B0] shrink-0"
+          >
+            <LogOut className="w-4 h-4" />
+          </Button>
+        </header>
+        <div className="md:hidden border-b border-[#322F36] px-3 py-2">
           <div className="flex gap-1 overflow-x-auto no-scrollbar">
             {navItems.map((item) => {
               const active = isActive(item.path, item.exact);
@@ -102,7 +122,7 @@ export default function ModeratorShell({
               );
             })}
           </div>
-        </header>
+        </div>
         <main className="flex-1 p-4 md:p-8 overflow-auto">{children}</main>
       </div>
     </div>

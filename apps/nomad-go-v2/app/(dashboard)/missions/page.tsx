@@ -7,9 +7,12 @@ import {
   getToursForMissionAction,
   getCompletedMissionIdsAction,
   completeMissionAction,
+  notifyMissionRadiusEnteredAction,
+  notifyQuestsIntroAction,
 } from "@/app/actions/gameActions";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useMissionDwell, MISSION_DWELL_MS } from "@/hooks/useMissionDwell";
+import { formatDistanceKm } from "@/lib/quest/haversine";
 import { useUserStats } from "@/hooks/useUserStats";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronDown, ChevronUp, Route, Timer } from "lucide-react";
@@ -38,12 +41,23 @@ export default function MissionsModule() {
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const [floatingXp, setFloatingXp] = useState<number | null>(null);
 
-  const { distances } = useGeolocation(missions);
-
-  const visibleMissions = useMemo(
+  const incompleteMissions = useMemo(
     () => missions.filter((m) => !completedIds.has(m.id)),
-    [missions, completedIds]
+    [missions, completedIds],
   );
+
+  const missionLocations = useMemo(
+    () =>
+      incompleteMissions.map((m) => ({
+        id: m.id,
+        latitude: m.latitude,
+        longitude: m.longitude,
+        radiusMeters: m.radius_meters ?? 50,
+      })),
+    [incompleteMissions],
+  );
+
+  const { distances } = useGeolocation(missionLocations);
 
   useEffect(() => {
     async function loadMissions() {
@@ -103,12 +117,33 @@ export default function MissionsModule() {
     [userStats?.id, missions, refreshStats]
   );
 
+  const handleMissionEnter = useCallback(
+    async (missionId: string) => {
+      const userId = userStats?.id;
+      if (!userId) return;
+
+      try {
+        await notifyMissionRadiusEnteredAction(userId, missionId);
+
+        const introKey = `nomad:quests-intro-push:${userId}`;
+        if (typeof window !== "undefined" && !window.localStorage.getItem(introKey)) {
+          window.localStorage.setItem(introKey, "1");
+          await notifyQuestsIntroAction(userId);
+        }
+      } catch {
+        // Best-effort push; dwell timer still runs in-app.
+      }
+    },
+    [userStats?.id],
+  );
+
   const { progress } = useMissionDwell({
-    missions,
+    missions: incompleteMissions,
     distances,
     completedIds,
     storageNamespace: userStats?.id,
     onComplete: handleMissionComplete,
+    onEnterRadius: handleMissionEnter,
   });
 
   const toggleTours = async (missionId: string) => {
@@ -168,7 +203,7 @@ export default function MissionsModule() {
         Completed sights disappear from this list.
       </p>
 
-      {visibleMissions.length === 0 ? (
+      {incompleteMissions.length === 0 ? (
         <div className="border border-dashed border-zinc-700 p-8 text-center rounded-xl text-zinc-500">
           {missions.length === 0
             ? "No missions found in database."
@@ -176,7 +211,7 @@ export default function MissionsModule() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {visibleMissions.map((mission) => {
+          {incompleteMissions.map((mission) => {
             const distance = distances[mission.id];
             const isInside =
               distance !== undefined && distance <= (mission.radius_meters || 50);
@@ -209,15 +244,16 @@ export default function MissionsModule() {
                   <h3 className="text-lg font-semibold text-zinc-200">{mission.title}</h3>
                   <p className="text-sm text-zinc-400 mt-1">{mission.description}</p>
                   <div className="mt-4 flex justify-between items-center text-xs">
-                    <span className="text-zinc-500">
-                      Radius: {mission.radius_meters}m
-                      {(mission.xp_reward ?? 0) > 0 && ` · +${mission.xp_reward} XP`}
-                    </span>
+                    {(mission.xp_reward ?? 0) > 0 ? (
+                      <span className="text-zinc-500">+{mission.xp_reward} XP</span>
+                    ) : (
+                      <span />
+                    )}
                     <span
                       className={`font-mono ${isInside ? "text-emerald-400" : "text-zinc-400"}`}
                     >
                       {distance !== undefined
-                        ? `${distance.toFixed(0)}m away`
+                        ? `${formatDistanceKm(distance)} away`
                         : "Calculating distance..."}
                     </span>
                   </div>

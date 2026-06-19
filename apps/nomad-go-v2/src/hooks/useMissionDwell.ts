@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MISSION_DWELL_MS } from "@/lib/missionDwell";
 
-export const MISSION_DWELL_MS = 10 * 60 * 1000; // 10 minutes inside radius
+export { MISSION_DWELL_MS };
 
 type DwellMission = {
   id: string;
@@ -16,6 +17,8 @@ type UseMissionDwellArgs = {
   /** Persist entry timestamps so dwell survives backgrounding/refresh (per user). */
   storageNamespace?: string;
   onComplete: (missionId: string) => void;
+  /** Fired once when the user newly enters a mission radius (not on dwell restore). */
+  onEnterRadius?: (missionId: string) => void;
 };
 
 type EnteredMap = Record<string, number>;
@@ -67,6 +70,7 @@ export function useMissionDwell({
   dwellMs = MISSION_DWELL_MS,
   storageNamespace,
   onComplete,
+  onEnterRadius,
 }: UseMissionDwellArgs) {
   const enteredAtRef = useRef<EnteredMap>({});
   const firedRef = useRef<Set<string>>(new Set());
@@ -106,6 +110,11 @@ export function useMissionDwell({
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
+  const onEnterRadiusRef = useRef(onEnterRadius);
+  useEffect(() => {
+    onEnterRadiusRef.current = onEnterRadius;
+  }, [onEnterRadius]);
+
   useEffect(() => {
     const now = Date.now();
     const next: Record<string, number> = {};
@@ -129,6 +138,9 @@ export function useMissionDwell({
         if (!enteredAtRef.current[mission.id]) {
           enteredAtRef.current[mission.id] = now;
           mutated = true;
+          if (hydratedRef.current) {
+            onEnterRadiusRef.current?.(mission.id);
+          }
         }
         const elapsed = now - enteredAtRef.current[mission.id];
         next[mission.id] = Math.min(1, elapsed / dwellMs);

@@ -12,14 +12,12 @@ import { sendPushToRoom } from "@/utils/notifications/webPush";
 
 export type GuideContext = {
   userId: string;
-  tenantId: string;
+  tenantId: string | null;
   fullName: string | null;
   companyName: string | null;
 };
 
-export type ActivityStatus = "pending" | "in_progress" | "completed";
-
-async function requireGuide(): Promise<{
+async function requireGuideProfile(): Promise<{
   ctx: GuideContext;
   supabase: SupabaseClient;
   service: SupabaseClient;
@@ -38,8 +36,8 @@ async function requireGuide(): Promise<{
     .maybeSingle();
 
   if (error) throw new Error(error.message);
-  if (!isGuide(profile?.role) || !profile?.tenant_id) {
-    throw new Error("You must be a field guide assigned to a travel company.");
+  if (!isGuide(profile?.role)) {
+    throw new Error("You must be a field guide.");
   }
 
   const tenantJoin = profile.tenants as { name: string } | { name: string }[] | null;
@@ -58,13 +56,36 @@ async function requireGuide(): Promise<{
   return {
     ctx: {
       userId: user.id,
-      tenantId: profile.tenant_id,
-      fullName: profile.full_name,
+      tenantId: profile?.tenant_id ?? null,
+      fullName: profile?.full_name ?? null,
       companyName,
     },
     supabase,
     service,
   };
+}
+
+async function requireAssignedGuide(): Promise<{
+  ctx: GuideContext & { tenantId: string };
+  supabase: SupabaseClient;
+  service: SupabaseClient;
+}> {
+  const base = await requireGuideProfile();
+  if (!base.ctx.tenantId) {
+    throw new Error(
+      "Accept a company invitation first before managing assigned rooms.",
+    );
+  }
+  return {
+    ctx: base.ctx as GuideContext & { tenantId: string },
+    supabase: base.supabase,
+    service: base.service,
+  };
+}
+
+/** @deprecated alias */
+async function requireGuide() {
+  return requireAssignedGuide();
 }
 
 async function assertGuideOwnsRoom(
@@ -84,9 +105,110 @@ async function assertGuideOwnsRoom(
   return room;
 }
 
+export type ActivityStatus = "pending" | "in_progress" | "completed";
+
 export async function getGuideContextAction(): Promise<GuideContext> {
-  const { ctx } = await requireGuide();
+  const { ctx } = await requireGuideProfile();
   return ctx;
+}
+
+export async function getGuideHireInvitesAction() {
+  const { ctx, supabase, service } = await requireGuideProfile();
+  if (ctx.tenantId) return [];
+
+  const { data, error } = await supabase
+    .from("guide_hire_requests")
+    .select("id, tenant_id, created_at, invited_by")
+    .eq("guide_id", ctx.userId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  if (!data?.length) return [];
+
+  const tenantIds = [...new Set(data.map((r) => r.tenant_id))];
+  const { data: tenants } = await service
+    .from("tenants")
+    .select("id, name, logo_url, location")
+    .in("id", tenantIds);
+
+  const tenantById = Object.fromEntries((tenants ?? []).map((t) => [t.id, t]));
+
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    company_name: tenantById[r.tenant_id]?.name ?? "Travel company",
+    company_logo: tenantById[r.tenant_id]?.logo_url ?? null,
+    company_location: tenantById[r.tenant_id]?.location ?? null,
+    created_at: r.created_at,
+  }));
+}
+
+export async function acceptGuideHireAction(requestId: string) {
+  const { ctx, supabase, service } = await requireGuideProfile();
+  if (ctx.tenantId) {
+    throw new Error("You are already linked to a travel company.");
+  }
+
+  const { data: request, error: fetchError } = await supabase
+    .from("guide_hire_requests")
+    .select("id, tenant_id, status")
+    .eq("id", requestId)
+    .eq("guide_id", ctx.userId)
+    .eq("status", "pending")
+    .maybeSingle();
+
+  if (fetchError) throw new Error(fetchError.message);
+  if (!request) throw new Error("Invitation not found or already handled.");
+
+  const now = new Date().toISOString();
+
+  const { error: acceptError } = await supabase
+    .from("guide_hire_requests")
+    .update({ status: "accepted", responded_at: now })
+    .eq("id", requestId)
+    .eq("guide_id", ctx.userId)
+    .eq("status", "pending");
+
+  if (acceptError) throw new Error(acceptError.message);
+
+  const { error: profileError } = await service
+    .from("profiles")
+    .update({ tenant_id: request.tenant_id })
+    .eq("id", ctx.userId)
+    .eq("role", "guide");
+
+  if (profileError) throw new Error(profileError.message);
+
+  await service
+    .from("guide_hire_requests")
+    .update({ status: "cancelled", responded_at: now })
+    .eq("guide_id", ctx.userId)
+    .eq("status", "pending")
+    .neq("id", requestId);
+
+  revalidatePath("/guide");
+  revalidatePath("/moderator/team");
+  return { success: true, tenantId: request.tenant_id };
+}
+
+export async function declineGuideHireAction(requestId: string) {
+  const { ctx, supabase } = await requireGuideProfile();
+
+  const { error } = await supabase
+    .from("guide_hire_requests")
+    .update({
+      status: "declined",
+      responded_at: new Date().toISOString(),
+    })
+    .eq("id", requestId)
+    .eq("guide_id", ctx.userId)
+    .eq("status", "pending");
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/guide");
+  revalidatePath("/moderator/team");
+  return { success: true };
 }
 
 export async function getGuideAssignedRoomsAction() {

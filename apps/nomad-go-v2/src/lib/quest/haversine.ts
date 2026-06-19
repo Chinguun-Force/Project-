@@ -31,3 +31,13 @@ export function isWithinRadiusMeters(
 ): boolean {
   return haversineDistanceMeters(lat, lon, targetLat, targetLon) <= radiusMeters;
 }
+
+/** Human-readable distance for mission cards (always km). */
+export function formatDistanceKm(meters: number): string {
+  const km = meters / 1000;
+  if (km < 10) {
+    const decimals = km < 1 ? 2 : 1;
+    return `${km.toFixed(decimals)} km`;
+  }
+  return `${Math.round(km)} km`;
+}

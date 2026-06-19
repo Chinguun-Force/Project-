@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/utils/supabase/server";
 import { getSupabaseConfig } from "@/utils/supabase/config";
 import { isCompanyModerator } from "@/lib/auth/roles";
+import { sendPushToUsers } from "@/utils/notifications/webPush";
 
 export type ModeratorContext = {
   userId: string;
@@ -113,42 +114,97 @@ export async function getModeratorTeamAction() {
   return data ?? [];
 }
 
-/** Promote an existing auth user to guide in this company (service role; RLS blocks tourist rows). */
+/** Send a hire invite to an admin-approved guide (must confirm before joining). */
 export async function hireGuideAction(profileId: string) {
-  const { ctx, service } = await requireModerator();
+  const { ctx, supabase, service } = await requireModerator();
 
-  const { error } = await service
+  const { data: guide, error: guideError } = await service
     .from("profiles")
-    .update({ role: "guide", tenant_id: ctx.tenantId })
-    .eq("id", profileId);
+    .select("id, role, tenant_id, full_name")
+    .eq("id", profileId)
+    .maybeSingle();
+
+  if (guideError) throw new Error(guideError.message);
+  if (!guide || guide.role !== "guide") {
+    throw new Error("Only users with the guide role can be hired.");
+  }
+  if (guide.tenant_id) {
+    throw new Error("This guide is already assigned to a travel company.");
+  }
+
+  const { data: existing } = await supabase
+    .from("guide_hire_requests")
+    .select("id")
+    .eq("tenant_id", ctx.tenantId)
+    .eq("guide_id", profileId)
+    .eq("status", "pending")
+    .maybeSingle();
+
+  if (existing) {
+    throw new Error("A pending invite was already sent to this guide.");
+  }
+
+  const { error } = await supabase.from("guide_hire_requests").insert({
+    tenant_id: ctx.tenantId,
+    guide_id: profileId,
+    invited_by: ctx.userId,
+    status: "pending",
+  });
 
   if (error) throw new Error(error.message);
 
-  const { error: userError } = await service
-    .from("users")
-    .update({ role: "guide" })
-    .eq("id", profileId);
-
-  if (userError) throw new Error(userError.message);
+  await sendPushToUsers([profileId], {
+    title: "Guide invitation",
+    body: `${ctx.companyName ?? "A travel company"} invited you to join their team. Open your Guide panel to respond.`,
+    url: "/guide",
+    tag: `guide-hire-${ctx.tenantId}`,
+  }).catch(() => undefined);
 
   revalidatePath("/moderator/team");
   return { success: true };
 }
 
+export async function cancelGuideHireAction(requestId: string) {
+  const { ctx, supabase } = await requireModerator();
+
+  const { error } = await supabase
+    .from("guide_hire_requests")
+    .update({
+      status: "cancelled",
+      responded_at: new Date().toISOString(),
+    })
+    .eq("id", requestId)
+    .eq("tenant_id", ctx.tenantId)
+    .eq("status", "pending");
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/moderator/team");
+  return { success: true };
+}
+
 export async function getHireCandidatesAction() {
-  const { service } = await requireModerator();
+  const { ctx, service } = await requireModerator();
+
+  const { data: pending } = await service
+    .from("guide_hire_requests")
+    .select("guide_id")
+    .eq("tenant_id", ctx.tenantId)
+    .eq("status", "pending");
+
+  const pendingIds = new Set((pending ?? []).map((r) => r.guide_id));
 
   const { data: profiles, error } = await service
     .from("profiles")
     .select("id, role, full_name, tenant_id")
-    .in("role", ["tourist"])
+    .eq("role", "guide")
     .is("tenant_id", null)
     .order("full_name")
     .limit(50);
 
   if (error) throw new Error(error.message);
 
-  const ids = (profiles ?? []).map((p) => p.id);
+  const available = (profiles ?? []).filter((p) => !pendingIds.has(p.id));
+  const ids = available.map((p) => p.id);
   if (ids.length === 0) return [];
 
   const { data: users } = await service
@@ -158,10 +214,50 @@ export async function getHireCandidatesAction() {
 
   const emailById = new Map((users ?? []).map((u) => [u.id, u.email]));
 
-  return (profiles ?? []).map((p) => ({
+  return available.map((p) => ({
     id: p.id,
     full_name: p.full_name,
     email: emailById.get(p.id) ?? null,
+  }));
+}
+
+export async function getModeratorPendingHiresAction() {
+  const { ctx, supabase, service } = await requireModerator();
+
+  const { data, error } = await supabase
+    .from("guide_hire_requests")
+    .select("id, guide_id, created_at, status")
+    .eq("tenant_id", ctx.tenantId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  if (!data?.length) return [];
+
+  const guideIds = data.map((r) => r.guide_id);
+  const { data: profiles } = await service
+    .from("profiles")
+    .select("id, full_name")
+    .in("id", guideIds);
+
+  const { data: users } = await service
+    .from("users")
+    .select("id, email")
+    .in("id", guideIds);
+
+  const nameById = Object.fromEntries(
+    (profiles ?? []).map((p) => [p.id, p.full_name ?? "Guide"]),
+  );
+  const emailById = Object.fromEntries(
+    (users ?? []).map((u) => [u.id, u.email ?? null]),
+  );
+
+  return data.map((r) => ({
+    id: r.id,
+    guide_id: r.guide_id,
+    guide_name: nameById[r.guide_id] ?? "Guide",
+    guide_email: emailById[r.guide_id] ?? null,
+    created_at: r.created_at,
   }));
 }
 
@@ -398,5 +494,60 @@ export async function createRoomAction(payload: {
   if (error) throw new Error(error.message);
   revalidatePath("/moderator/rooms");
   revalidatePath("/moderator");
+  return { success: true };
+}
+
+export type TenantProfile = {
+  id: string;
+  name: string;
+  description: string | null;
+  logo_url: string | null;
+  contact_email: string | null;
+  website: string | null;
+  location: string | null;
+};
+
+export async function getTenantProfileAction(): Promise<TenantProfile> {
+  const { ctx, supabase } = await requireModerator();
+  const { data, error } = await supabase
+    .from("tenants")
+    .select("id, name, description, logo_url, contact_email, website, location")
+    .eq("id", ctx.tenantId)
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as TenantProfile;
+}
+
+export async function updateTenantProfileAction(payload: {
+  name: string;
+  description?: string;
+  logoUrl?: string | null;
+  contactEmail?: string | null;
+  website?: string | null;
+  location?: string | null;
+}) {
+  const { ctx, supabase } = await requireModerator();
+  const name = payload.name.trim();
+  if (!name) throw new Error("Company name is required");
+
+  const { error } = await supabase
+    .from("tenants")
+    .update({
+      name,
+      description: payload.description?.trim() || null,
+      logo_url: payload.logoUrl?.trim() || null,
+      contact_email: payload.contactEmail?.trim() || null,
+      website: payload.website?.trim() || null,
+      location: payload.location?.trim() || null,
+    })
+    .eq("id", ctx.tenantId);
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/moderator/company");
+  revalidatePath("/moderator");
+  revalidatePath("/tours");
+  revalidatePath("/admin");
   return { success: true };
 }

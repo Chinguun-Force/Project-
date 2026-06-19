@@ -16,7 +16,8 @@ import {
   removeTripMissionAction,
 } from "../actions";
 import { Spinner } from "@/components/ui/spinner";
-import { Globe, Map, Plus, X } from "lucide-react";
+import ImageUploadField from "@/components/admin/ImageUploadField";
+import { Globe, Map, Plus, Search, X } from "lucide-react";
 
 export default function ModeratorTemplatesPage() {
   const [trips, setTrips] = useState<any[]>([]);
@@ -38,6 +39,7 @@ export default function ModeratorTemplatesPage() {
   const [marketLocation, setMarketLocation] = useState("");
   const [isPublished, setIsPublished] = useState(false);
   const [activityName, setActivityName] = useState("");
+  const [missionSearch, setMissionSearch] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const loadTrips = async () => {
@@ -190,6 +192,18 @@ export default function ModeratorTemplatesPage() {
   };
 
   const linkedIds = new Set(tripMissions.map((m) => m.id));
+  const missionQuery = missionSearch.trim().toLowerCase();
+  const matchingMissions =
+    missionQuery.length > 0
+      ? catalogMissions
+          .filter((m) => !linkedIds.has(m.id))
+          .filter((m) => {
+            const title = (m.title ?? "").toLowerCase();
+            const description = (m.description ?? "").toLowerCase();
+            return title.includes(missionQuery) || description.includes(missionQuery);
+          })
+          .slice(0, 4)
+      : [];
 
   if (loading) {
     return (
@@ -226,11 +240,11 @@ export default function ModeratorTemplatesPage() {
           placeholder="Short description (optional)"
           className="bg-[#1A1D26] border-[#322F36] text-white"
         />
-        <Input
+        <ImageUploadField
+          label="Cover image"
+          folder="trips"
           value={imageUrl}
-          onChange={(e) => setImageUrl(e.target.value)}
-          placeholder="Cover image URL"
-          className="bg-[#1A1D26] border-[#322F36] text-white"
+          onChange={setImageUrl}
         />
         <div className="grid grid-cols-3 gap-2">
           <Input
@@ -296,11 +310,11 @@ export default function ModeratorTemplatesPage() {
               Tours page card (marketplace)
             </h2>
             <div className="space-y-3">
-              <Input
+              <ImageUploadField
+                label="Cover image"
+                folder="trips"
                 value={marketImage}
-                onChange={(e) => setMarketImage(e.target.value)}
-                placeholder="Cover image URL"
-                className="bg-[#1A1D26] border-[#322F36] text-white"
+                onChange={setMarketImage}
               />
               <div className="grid grid-cols-3 gap-2">
                 <Input
@@ -373,29 +387,46 @@ export default function ModeratorTemplatesPage() {
               </ul>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto">
-              {catalogMissions.map((m) => {
-                const isLinked = linkedIds.has(m.id);
-                return (
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A0A0B0]" />
+              <Input
+                value={missionSearch}
+                onChange={(e) => setMissionSearch(e.target.value)}
+                placeholder="Mission хайх (гарчиг эсвэл тайлбар)…"
+                className="bg-[#1A1D26] border-[#322F36] text-white pl-9"
+              />
+            </div>
+
+            {missionQuery.length === 0 ? (
+              <p className="text-sm text-[#A0A0B0]">
+                Хайлт бичээд тохирох mission-уудыг хараарай (хамгийн ихдээ 4).
+              </p>
+            ) : matchingMissions.length === 0 ? (
+              <p className="text-sm text-[#A0A0B0]">
+                &quot;{missionSearch.trim()}&quot;-тай таарах mission олдсонгүй.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {matchingMissions.map((m) => (
                   <button
                     key={m.id}
                     type="button"
                     disabled={submitting}
-                    onClick={() => handleToggleMission(m.id, isLinked)}
-                    className={`text-left rounded-lg p-3 border text-sm transition-all ${
-                      isLinked
-                        ? "border-[#A8C69F] bg-[#A8C69F]/10 text-white"
-                        : "border-[#322F36] bg-[#1A1D26]/60 text-[#A0A0B0] hover:border-[#A0A0B0]"
-                    }`}
+                    onClick={() => handleToggleMission(m.id, false)}
+                    className="text-left rounded-lg p-3 border text-sm transition-all border-[#322F36] bg-[#1A1D26]/60 text-[#A0A0B0] hover:border-[#A8C69F] hover:text-white"
                   >
-                    <span className="font-medium line-clamp-1">{m.title}</span>
+                    <span className="font-medium line-clamp-1 text-white">{m.title}</span>
+                    {m.description && (
+                      <span className="text-xs block mt-1 line-clamp-2">{m.description}</span>
+                    )}
                     {(m.xp_reward ?? 0) > 0 && (
-                      <span className="text-xs block mt-1">+{m.xp_reward} XP</span>
+                      <span className="text-xs block mt-1 text-[#A8C69F]">+{m.xp_reward} XP</span>
                     )}
                   </button>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
+
             {catalogMissions.length === 0 && (
               <p className="text-sm text-[#A0A0B0]">No missions in catalog. Admin can create missions.</p>
             )}

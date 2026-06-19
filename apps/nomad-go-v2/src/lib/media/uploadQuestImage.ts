@@ -6,7 +6,7 @@ export const QUEST_MEDIA_BUCKET = "quest-media";
 /** 1 year immutable caching → Cloudflare CDN egress savings. */
 const CACHE_CONTROL = "public, max-age=31536000";
 
-export type QuestMediaFolder = "missions" | "quests";
+export type QuestMediaFolder = "missions" | "quests" | "companies" | "trips";
 
 export type UploadQuestImageResult = {
   publicUrl: string;

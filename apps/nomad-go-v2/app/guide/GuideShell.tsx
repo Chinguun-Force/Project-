@@ -14,10 +14,12 @@ export default function GuideShell({
   children,
   companyName,
   guideName,
+  awaitingCompany,
 }: {
   children: ReactNode;
   companyName?: string | null;
   guideName?: string | null;
+  awaitingCompany?: boolean;
 }) {
   const { logout } = useAuth();
   const pathname = usePathname();
@@ -40,7 +42,9 @@ export default function GuideShell({
             </span>
           </div>
           <p className="text-xs text-[#A0A0B0] mt-2 line-clamp-2">
-            {companyName ?? "Travel company"}
+            {awaitingCompany
+              ? "Awaiting company — respond to invitations below"
+              : (companyName ?? "Travel company")}
           </p>
           {guideName && (
             <p className="text-xs text-white/80 mt-1 truncate">{guideName}</p>

@@ -1,0 +1,11 @@
+# Drop original mission photos here before upload.
+# Name files exactly by `image_slug` from missions-mongolia-sights.json
+# Examples: gandan.jpg, lake-khuvsgul.png, khongoryn-els.jpeg
+#
+# Then run from apps/nomad-go-v2:
+#   npm install          # ensures sharp is available
+#   node scripts/compress-upload-mission-images.mjs --compress-only
+#   node scripts/compress-upload-mission-images.mjs
+#
+# Compressed output: supabase/seeds/mission-images/compressed/
+# Target size: ~200-300KB JPEG, max 1600px edge (matches app upload standards)

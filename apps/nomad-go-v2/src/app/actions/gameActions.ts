@@ -7,8 +7,47 @@ import {
 } from '@/lib/tours/formatTourCard'
 import { mapRoomToActiveExpedition } from '@/lib/expedition/mapRoomToDashboard'
 import { sendPushToUsers } from '@/utils/notifications/webPush'
+import { MISSION_DWELL_MINUTES } from '@/lib/missionDwell'
 
-// 1. Fetch All Live Missions from db
+type TenantJoinRow = {
+  name?: string
+  logo_url?: string | null
+  description?: string | null
+  location?: string | null
+  website?: string | null
+  contact_email?: string | null
+}
+
+export type MarketplaceCompany = {
+  id: string
+  name: string
+  description: string | null
+  logoUrl: string | null
+  location: string | null
+  website: string | null
+  contactEmail: string | null
+}
+
+function parseTenantJoin(raw: unknown): TenantJoinRow | null {
+  if (!raw) return null
+  return (Array.isArray(raw) ? raw[0] : raw) as TenantJoinRow
+}
+
+function marketplaceCompanyFromTenant(
+  tenantId: string,
+  tenant: TenantJoinRow | null,
+): MarketplaceCompany | null {
+  if (!tenant?.name) return null
+  return {
+    id: tenantId,
+    name: tenant.name,
+    description: tenant.description ?? null,
+    logoUrl: tenant.logo_url ?? null,
+    location: tenant.location ?? null,
+    website: tenant.website ?? null,
+    contactEmail: tenant.contact_email ?? null,
+  }
+}
 export async function getMissionsAction() {
   const supabase = await createClient()
   const { data, error } = await supabase
@@ -36,6 +75,60 @@ export async function getCompletedMissionIdsAction(userId: string): Promise<stri
     return []
   }
   return (data ?? []).map((r) => r.mission_id as string)
+}
+
+/**
+ * Push when the tourist enters a sight geofence — reminds them to dwell to complete.
+ */
+export async function notifyMissionRadiusEnteredAction(userId: string, missionId: string) {
+  if (!userId || !missionId) return { success: false }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user || user.id !== userId) return { success: false }
+
+  const { data: mission, error } = await supabase
+    .from('missions')
+    .select('title, xp_reward')
+    .eq('id', missionId)
+    .maybeSingle()
+
+  if (error || !mission) return { success: false }
+
+  const title = mission.title ?? 'this sight'
+  const xpReward = Number(mission.xp_reward ?? 0)
+  const xpHint = xpReward > 0 ? ` and earn +${xpReward} XP` : ''
+
+  await sendPushToUsers([userId], {
+    title: `You entered ${title}`,
+    body: `Stay ${MISSION_DWELL_MINUTES} minutes inside the area to complete this sight${xpHint}.`,
+    url: '/missions',
+    tag: `mission-enter-${missionId}`,
+  }).catch(() => undefined)
+
+  return { success: true }
+}
+
+/** One-time nudge to open the Quests tab (sent on first sight geofence entry). */
+export async function notifyQuestsIntroAction(userId: string) {
+  if (!userId) return { success: false }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user || user.id !== userId) return { success: false }
+
+  await sendPushToUsers([userId], {
+    title: 'Get to know your quests',
+    body: 'Open Quests to try photo, quiz, and check-in challenges on your expedition.',
+    url: '/quests',
+    tag: 'quests-intro',
+  }).catch(() => undefined)
+
+  return { success: true }
 }
 
 /**
@@ -184,7 +277,8 @@ export async function getToursAction() {
         duration_days,
         location,
         created_at,
-        tenants ( name ),
+        tenant_id,
+        tenants ( name, logo_url, description, location, website, contact_email ),
         trip_missions (
           missions ( id, title, image_url, xp_reward )
         )
@@ -203,10 +297,8 @@ export async function getToursAction() {
     )
     const { missions, topMissions, extraMissionCount } =
       formatTourCardMissions(missionList)
-    const tenantRaw = trip.tenants as unknown
-    const tenant = (Array.isArray(tenantRaw) ? tenantRaw[0] : tenantRaw) as {
-      name?: string
-    } | null
+    const tenant = parseTenantJoin(trip.tenants)
+    const company = marketplaceCompanyFromTenant(trip.tenant_id as string, tenant)
 
     return {
       sourceType: 'trip' as const,
@@ -219,6 +311,7 @@ export async function getToursAction() {
       location: trip.location,
       start_date: trip.created_at,
       companyName: tenant?.name ?? null,
+      company,
       missions,
       topMissions,
       extraMissionCount,
@@ -226,6 +319,47 @@ export async function getToursAction() {
   })
 
   return tripCards
+}
+
+/** Travel companies with at least one published marketplace trip. */
+export async function getMarketplaceCompaniesAction(): Promise<MarketplaceCompany[]> {
+  const supabase = await createClient()
+
+  const { data: publishedTrips, error: tripsError } = await supabase
+    .from('trips')
+    .select('tenant_id')
+    .eq('is_published', true)
+
+  if (tripsError) {
+    console.error('⛔ getMarketplaceCompaniesAction trips:', tripsError.message)
+    return []
+  }
+
+  const tenantIds = [
+    ...new Set((publishedTrips ?? []).map((t) => t.tenant_id as string)),
+  ]
+  if (tenantIds.length === 0) return []
+
+  const { data: tenants, error } = await supabase
+    .from('tenants')
+    .select('id, name, description, logo_url, contact_email, website, location')
+    .in('id', tenantIds)
+    .order('name')
+
+  if (error) {
+    console.error('⛔ getMarketplaceCompaniesAction tenants:', error.message)
+    return []
+  }
+
+  return (tenants ?? []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    description: t.description ?? null,
+    logoUrl: t.logo_url ?? null,
+    location: t.location ?? null,
+    website: t.website ?? null,
+    contactEmail: t.contact_email ?? null,
+  }))
 }
 
 // 4. Fetch single published trip template (marketplace preview)
@@ -237,7 +371,7 @@ export async function getTourDetailsAction(id: string) {
     .select(
       `
       *,
-      tenants ( name ),
+      tenants ( name, logo_url, description, location, website, contact_email ),
       trip_missions (
         missions (*)
       ),
@@ -283,10 +417,8 @@ export async function getTourDetailsAction(id: string) {
     },
   ]
 
-  const tenantRaw = trip.tenants as unknown
-  const tenant = (Array.isArray(tenantRaw) ? tenantRaw[0] : tenantRaw) as {
-    name?: string
-  } | null
+  const tenant = parseTenantJoin(trip.tenants)
+  const company = marketplaceCompanyFromTenant(trip.tenant_id as string, tenant)
 
   return {
     sourceType: 'trip' as const,
@@ -299,6 +431,7 @@ export async function getTourDetailsAction(id: string) {
     location: trip.location,
     start_date: trip.created_at,
     companyName: tenant?.name ?? null,
+    company,
     missions,
     journey_days,
     isTripTemplate: true,
